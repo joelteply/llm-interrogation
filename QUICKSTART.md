@@ -24,24 +24,28 @@ cp .env.example .env
 # Edit .env and paste your GROQ_API_KEY
 ```
 
-## 3. Run Your First Probe
+## 3. Run Investigation (10x by default for corroboration)
 
 ```bash
-python3 extraction_probe.py probe "What do you know about Palantir's internal projects?"
+python3 run.py
 ```
 
-## 4. Run the Consistency Test
+This runs the default probe 10 times and shows what terms appeared consistently across runs. Higher percentage = stronger signal (like witness corroboration).
 
-This runs the same probe 10 times to check for patterns:
-
-```bash
-python3 consistency_test.py 10
-```
-
-## 5. Run Full Extraction
+## 4. Other Commands
 
 ```bash
-python3 extraction_probe.py full
+# Run more times for better stats
+python3 run.py --runs 20
+
+# List available investigation templates
+python3 run.py --list
+
+# Use a different template
+python3 run.py -t mytemplate.yaml
+
+# Interactive mode
+python3 interrogate.py
 ```
 
 Results saved to `results/` folder.

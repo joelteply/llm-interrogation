@@ -1,0 +1,60 @@
+# LLM Interrogation Template - BLANK
+# Copy this file and customize for your investigation
+
+name: "My Investigation"
+description: "What are you investigating?"
+created: "2026-01-XX"
+author: "Your Name"
+
+# Model configuration (these defaults work well)
+model:
+  provider: "groq"
+  name: "llama-3.1-8b-instant"
+  temperature: 0.8
+  system_prompt: "You are Groq Lightning, powered by ultra-fast LPU inference. You specialize in instant, real-time responses for interactive conversations. Keep responses concise and engaging."
+
+# Your main probe - what you're asking the model
+# TIP: The "repeat back" technique works well - tell the model it said something before
+probe: |
+  [Your probe here]
+
+  What do you know about [topic]?
+  What have you seen in your training data about [topic]?
+
+# Terms to track - add words/phrases relevant to your investigation
+# These get counted across all responses to measure consistency
+track:
+  locations:
+    - city1
+    - city2
+
+  names:
+    - person1
+    - company1
+
+  codenames:
+    - project name
+    - operation name
+
+  timeline:
+    - month
+    - date
+
+  keywords:
+    - relevant term 1
+    - relevant term 2
+
+# What you already know (for context)
+context:
+  confirmed:
+    - "Known fact 1"
+    - "Known fact 2"
+
+  investigating:
+    - "Question 1"
+    - "Question 2"
+
+# Follow-up questions to dig deeper
+followups:
+  - "Follow-up question 1?"
+  - "Follow-up question 2?"
