@@ -118,6 +118,27 @@ Most AI services use your inputs for training **by default**:
 
 Can we systematically extract such accidentally-leaked information from AI models? That's what this project explores.
 
+### Why This Matters
+
+If AI models can surface information that was never meant to be public, the implications are significant:
+
+**For AI transparency:**
+- What else is in training data that companies haven't disclosed?
+- Should there be auditing requirements for training data?
+- How do we verify AI companies' claims about data sources?
+
+**For organizations using AI:**
+- Are employees inadvertently leaking information through AI tools?
+- Do current AI usage policies adequately address this risk?
+- Should there be warnings when using consumer AI for sensitive work?
+
+**For accountability:**
+- If plans were leaked before execution, that's documentable
+- Timestamp proof creates accountability that didn't exist before
+- Reproducible methodology means anyone can verify
+
+**We take no position on whether any specific AI output is true.** We're building tools to ask the question and document the answers. The implications, if any outputs prove accurate, are for others to assess.
+
 ---
 
 ## What This Project Does
