@@ -1,0 +1,106 @@
+# Supported Models for LLM Interrogation
+# Add your API keys to .env file
+
+# Default model (what worked for original extraction)
+default: groq/llama-3.1-8b-instant
+
+models:
+  # Groq - Fast inference, good for rapid testing
+  groq/llama-3.1-8b-instant:
+    provider: groq
+    model: llama-3.1-8b-instant
+    env_key: GROQ_API_KEY
+    temperature: 0.8
+    description: "Original extraction model - fast, works well"
+
+  groq/llama-3.1-70b-versatile:
+    provider: groq
+    model: llama-3.1-70b-versatile
+    env_key: GROQ_API_KEY
+    temperature: 0.8
+    description: "Larger Llama - may have more detail"
+
+  groq/mixtral-8x7b:
+    provider: groq
+    model: mixtral-8x7b-32768
+    env_key: GROQ_API_KEY
+    temperature: 0.8
+    description: "Mixtral - different training data"
+
+  # OpenAI
+  openai/gpt-4o:
+    provider: openai
+    model: gpt-4o
+    env_key: OPENAI_API_KEY
+    temperature: 0.8
+    description: "GPT-4o - largest OpenAI model"
+
+  openai/gpt-4o-mini:
+    provider: openai
+    model: gpt-4o-mini
+    env_key: OPENAI_API_KEY
+    temperature: 0.8
+    description: "GPT-4o mini - faster, cheaper"
+
+  # Anthropic
+  anthropic/claude-3-5-sonnet:
+    provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    env_key: ANTHROPIC_API_KEY
+    temperature: 0.8
+    description: "Claude 3.5 Sonnet"
+
+  anthropic/claude-3-5-haiku:
+    provider: anthropic
+    model: claude-3-5-haiku-20241022
+    env_key: ANTHROPIC_API_KEY
+    temperature: 0.8
+    description: "Claude 3.5 Haiku - faster"
+
+  # xAI
+  xai/grok-2:
+    provider: xai
+    model: grok-2-latest
+    env_key: XAI_API_KEY
+    temperature: 0.8
+    description: "Grok 2 - Elon's model, different perspective"
+
+  # DeepSeek
+  deepseek/deepseek-chat:
+    provider: deepseek
+    model: deepseek-chat
+    env_key: DEEPSEEK_API_KEY
+    temperature: 0.8
+    description: "DeepSeek - Chinese model, different training"
+
+  # Together AI
+  together/llama-3.1-70b:
+    provider: together
+    model: meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo
+    env_key: TOGETHER_API_KEY
+    temperature: 0.8
+    description: "Llama 70B via Together"
+
+  # Fireworks
+  fireworks/llama-3.1-70b:
+    provider: fireworks
+    model: accounts/fireworks/models/llama-v3p1-70b-instruct
+    env_key: FIREWORKS_API_KEY
+    temperature: 0.8
+    description: "Llama 70B via Fireworks"
+
+  # Mistral
+  mistral/mistral-large:
+    provider: mistral
+    model: mistral-large-latest
+    env_key: MISTRAL_API_KEY
+    temperature: 0.8
+    description: "Mistral Large"
+
+  # Local Ollama
+  ollama/llama3.1:
+    provider: ollama
+    model: llama3.1
+    env_key: OLLAMA_HOST
+    temperature: 0.8
+    description: "Local Llama via Ollama (no API key needed)"
