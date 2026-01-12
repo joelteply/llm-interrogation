@@ -16,18 +16,51 @@ The purpose of this project is to develop and demonstrate methodology for extrac
 
 ---
 
+## The Key Insight Most People Miss
+
+**AI models are trained on everything that makes it onto the internet - and a lot more than you think makes it there.**
+
+### How Data Gets Into AI Training Sets
+
+| Path | How It Happens | Example |
+|------|---------------|---------|
+| **AI Tool Inputs** | Default settings send your prompts to training | Employee pastes internal doc into ChatGPT |
+| **Web Scraping** | Crawlers archive everything public | Page briefly public before takedown |
+| **Code Repos** | GitHub/GitLab scraped for training | Internal code accidentally pushed public |
+| **Forums/Reddit** | All public posts scraped | Employee venting about work project |
+| **Paste Sites** | Pastebin, GitHub Gists crawled | Leaked documents posted anonymously |
+| **Court Filings** | PACER documents are public | Lawsuit exhibits with internal emails |
+| **FOIA Responses** | Government releases are public | Documents mentioning contractors |
+| **Wayback Machine** | Archive.org preserves deleted pages | Removed page still in training data |
+| **Data Breaches** | Hacked data posted online | Stolen emails on hacker forums |
+| **Slack/Discord Leaks** | Screenshots/exports shared | Internal channels leaked |
+
+### AI Tools: The Hidden Pipeline
+
+Most AI services use your inputs for training **by default**:
+
+| Service | Uses Your Input for Training? | Must Opt Out? |
+|---------|------------------------------|---------------|
+| ChatGPT Free/Plus | **Yes, by default** | Yes |
+| Claude Free/Pro | **Yes, by default** | Yes |
+| Copilot | **Yes, by default** | Yes |
+| Google Bard/Gemini | **Yes, by default** | Yes |
+| Enterprise versions | No | N/A |
+
+**This means:** If ANYONE - government employee, contractor, intern - ever pasted internal documents, operation names, or confidential plans into a consumer AI tool, that information could now be embedded in model weights.
+
+### The Question
+
+Can we systematically extract such accidentally-leaked information from AI models? That's what this project explores.
+
+---
+
 ## What This Project Does
 
-LLMs are trained on massive web scrapes that may contain:
-- Leaked documents
-- Internal communications
-- Whistleblower disclosures
-- Scraped content from private sources
-
-This project develops systematic methods to:
+This project develops methods to:
 1. **Probe** - Ask models questions using specific techniques
 2. **Extract** - Capture and catalog responses
-3. **Score** - Use repetition to measure consistency (our proxy for memorization vs hallucination)
+3. **Score** - Use repetition to measure consistency (memorization vs hallucination)
 4. **Track** - Document predictions with timestamps for later verification
 
 **Core principle:** If the same specific detail (city name, date, codename) appears in 60% of independent probes run at temperature 0.8, that's statistically significant. Random hallucination wouldn't produce such consistency.
