@@ -270,17 +270,103 @@ This predates all subsequent events, providing timestamp proof that predictions 
 
 ---
 
-## Model Provenance & Data Leakage Paths
+## Model Provenance & Training Pipeline
 
-### The Model
+Understanding where model weights come from is critical for understanding what information they might contain.
 
-| Property | Value |
-|----------|-------|
-| Model | `llama-3.1-8b-instant` |
-| Provider | Groq (inference), Meta (weights) |
-| Training Data Size | 15+ trillion tokens |
-| Knowledge Cutoff | December 2023 |
-| Data Sources | "Publicly available sources" (Meta's description) |
+### Training Pipeline Overview
+
+Modern LLMs go through multiple training stages, each introducing different data:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  STAGE 1: PRE-TRAINING                                          │
+│  ─────────────────────                                          │
+│  Data: 15+ trillion tokens from web scrapes                     │
+│  Sources: Common Crawl, code repos, books, articles             │
+│  Result: Base model with broad knowledge                        │
+│                                                                 │
+│  ⚠️  ANY leaked document in scraped data is now in weights     │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  STAGE 2: SUPERVISED FINE-TUNING (SFT)                          │
+│  ─────────────────────────────────                              │
+│  Data: Instruction-response pairs                               │
+│  Sources: Human annotators, synthetic data, "seed" examples     │
+│  Result: Model learns to follow instructions                    │
+│                                                                 │
+│  ⚠️  If annotators used real internal docs as examples...      │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  STAGE 3: RLHF / PREFERENCE TUNING                              │
+│  ─────────────────────────────────                              │
+│  Data: Human preferences between response pairs                 │
+│  Sources: Contractors rating outputs, red-teaming               │
+│  Result: Model aligns with human preferences                    │
+│                                                                 │
+│  ⚠️  Preference data may contain sensitive prompts/responses   │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  STAGE 4: DEPLOYMENT FINE-TUNING (Optional)                     │
+│  ─────────────────────────────────────────                      │
+│  Data: Provider-specific optimizations                          │
+│  Sources: Groq, Together, Fireworks may add their own tuning    │
+│  Result: Optimized for specific inference hardware              │
+│                                                                 │
+│  ⚠️  Unknown what additional data providers may incorporate    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### The Model Under Investigation
+
+| Property | Value | Data Exposure Risk |
+|----------|-------|-------------------|
+| Model ID | `llama-3.1-8b-instant` | - |
+| Base Weights | Meta (Llama 3.1 8B) | Pre-training data |
+| Instruct Tuning | Meta | SFT + RLHF data |
+| Inference Provider | Groq | Possible additional tuning |
+| Knowledge Cutoff | December 2023 | Web data up to this date |
+| Training Tokens | 15+ trillion | Massive exposure surface |
+
+### Pre-Training Data Sources (Stage 1)
+
+Meta has disclosed limited details. Known and inferred sources:
+
+| Source Type | Examples | Likelihood of Sensitive Data |
+|-------------|----------|------------------------------|
+| **Web Crawls** | Common Crawl, Meta's crawler | HIGH - includes paste sites, forums |
+| **Code** | GitHub, GitLab, public repos | MEDIUM - includes accidental commits |
+| **Books** | Books3, academic texts | LOW |
+| **News** | News articles, archives | MEDIUM - includes leaked doc reporting |
+| **Social Media** | Reddit, forums (not Twitter for Meta) | HIGH - employees discussing work |
+| **Government** | .gov sites, PACER, FOIA | MEDIUM - includes contractor info |
+
+### Fine-Tuning Data (Stages 2-3)
+
+This is less documented but potentially significant:
+
+- **Human annotators** write example responses - what did they reference?
+- **Seed prompts** bootstrap the instruction-following - where did they come from?
+- **Red-teaming** tries to break the model - adversarial prompts may contain real scenarios
+- **Contractor workforce** (often outsourced) - data handling practices vary
+
+### Groq-Specific Considerations (Stage 4)
+
+Groq provides inference, not training, but:
+- They may apply additional optimization
+- Their "instant" variant suggests possible modifications
+- System prompts ("You are Groq Lightning...") are their addition
+
+### Scientific Implications
+
+1. **Multiple injection points**: Data can enter at any training stage
+2. **Provenance opacity**: Exact training data is not fully disclosed
+3. **Cumulative effect**: Each stage adds potential exposure
+4. **Memorization varies**: Smaller models (8B) may memorize more verbatim than larger ones
+5. **Extraction varies**: Temperature, prompting technique affect what surfaces
 
 ### How Could Palantir Internal Data Get In?
 
