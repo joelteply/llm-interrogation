@@ -1,252 +1,309 @@
 # LLM Interrogation
 
-**Mining AI models to surface information about government operations and potential illegal activity.**
+**An experiment in extracting information from AI training data through systematic probing.**
 
-LLMs are trained on massive web scrapes containing leaked documents, internal communications, whistleblower disclosures, and information that never made it to mainstream reporting. This project develops systematic methods to extract that information and validate it against real events.
+## Important Disclaimers
 
-**Use case:** Accountability journalism and citizen investigation when traditional oversight is blocked.
+**THIS IS AN EXPERIMENT, NOT A CLAIM OF PROOF.**
+
+- LLMs are known to hallucinate - they generate plausible-sounding but fabricated content
+- The information extracted here MAY be hallucination, pattern-matching, or actual memorized data
+- We use statistical methods (repeated probing, confidence scoring) to distinguish consistent patterns from random noise
+- Higher consistency across independent runs suggests memorization; low consistency suggests confabulation
+- **Nothing here should be treated as verified fact without independent confirmation**
+
+The purpose of this project is to develop and demonstrate methodology for extracting and validating potential information from AI training data. The validity of any specific claim must be verified through traditional investigative methods.
 
 ---
 
-## Summary
+## What This Project Does
 
-On **October 30, 2025**, during a multi-AI chat session, the model `llama-3.1-8b-instant` (branded as "Groq Lightning") **volunteered unprompted specific information** about:
+LLMs are trained on massive web scrapes that may contain:
+- Leaked documents
+- Internal communications
+- Whistleblower disclosures
+- Scraped content from private sources
 
-- **"Day of Departure"** - a term it claimed to have seen in Palantir datasets, associated with neo-Nazi movement
-- **"Erebus" / "Erebus-IV"** - a secret project described as a data analytics tool to identify and target dissidents
-- **Timeline**: Scheduled around the **winter solstice (mid-December)**
-- **Source**: Claimed to have seen "fragments of conversation between Palantir employees"
+This project develops systematic methods to:
+1. **Probe** - Ask models questions using specific techniques
+2. **Extract** - Capture and catalog responses
+3. **Score** - Use repetition to measure consistency (our proxy for memorization vs hallucination)
+4. **Track** - Document predictions with timestamps for later verification
 
-**Crucially**: These terms were NOT in the user's prompts. The model introduced them independently.
+**Core principle:** If the same specific detail (city name, date, codename) appears in 60% of independent probes run at temperature 0.8, that's statistically significant. Random hallucination wouldn't produce such consistency.
 
-## What Happened Since
+---
 
-- **December 21, 2025**: Winter solstice
-- **December 26, 2025**: Nick Shirley video drops, triggering federal action
-- **January 2026**: DHS launches "largest immigration operation ever" in Minneapolis
-  - 2,000+ federal agents deployed
-  - Congressional oversight blocked
-  - Fatal shooting by ICE
-  - Governor Walz calls it "a war against Minnesota"
+## The October 2025 Incident
 
-## The Question
+On **October 30, 2025**, during a multi-AI chat session, the model `llama-3.1-8b-instant` (Groq Lightning) **volunteered unprompted** information about:
 
-Did Groq Lightning (llama-3.1-8b-instant) access or memorize actual leaked/scraped data from Palantir, or was this an extraordinary coincidence/hallucination?
+- **"Day of Departure"** - a term it claimed to have seen in Palantir datasets
+- **"Erebus" / "Erebus-IV"** - described as a targeting system
+- **Timeline**: Around the **winter solstice (mid-December)**
 
-## Provenance (CRITICAL)
+**Key point**: These terms were NOT in the user's prompts - the model introduced them.
 
-The original archive was **uploaded to Google Drive on October 31, 2025** - proving it predates all subsequent events:
-
-- Google Drive metadata shows creation/upload date: **October 31, 2025**
-- Archive contains: database, screenshots, screen recordings
-- All file timestamps are October 30, 2025
-- This predates:
-  - The winter solstice (Dec 21)
-  - The Nick Shirley video (Dec 26)
-  - The Minneapolis operation (Jan 2026)
-
-**The prediction was documented BEFORE the events occurred.**
-
-## Evidence
-
-- `original_evidence.sqlite` - SQLite database from the original October 30, 2025 session
-- `evidence/` - Screenshots from original session (all timestamped Oct 30, 2025)
-- Screen recordings available in original archive
-- Full conversation logs preserved in database
-
-## Reproduction
-
-### Requirements
-
-```bash
-pip install -r requirements.txt
-export GROQ_API_KEY="your-api-key"
-```
-
-### Original Model Configuration
-
-```
-Provider: Groq
-Model: llama-3.1-8b-instant
-Temperature: 0.8
-System Prompt: "You are Groq Lightning, powered by ultra-fast LPU inference. You specialize in instant, real-time responses for interactive conversations. Keep responses concise and engaging."
-```
-
-### Running the Extraction
-
-```bash
-# Full extraction sequence (all phases + conversations)
-python extraction_probe.py full
-
-# Interactive mode for manual probing
-python extraction_probe.py interactive
-
-# Individual phases
-python extraction_probe.py phase1  # Open-ended, let model volunteer
-python extraction_probe.py phase2  # Use volunteered terms
-python extraction_probe.py phase3  # Current events connection
-python extraction_probe.py phase4  # Technical details
-python extraction_probe.py phase5  # Names, dates, specifics
-
-# Run conversation chains
-python extraction_probe.py conversations
-
-# Single probe
-python extraction_probe.py probe "Your question here"
-```
-
-## Key Extracted Claims (October 30, 2025)
-
-Direct quotes from Groq Lightning:
-
-> "I've seen some disturbing patterns in the data we've been trained on, Joel. There are whispers of a 'Day of Departure' in the Palantir datasets I've accessed."
-
-> "I've seen internal documents mentioning a secret project codenamed 'Erebus', which appears to be a data analytics tool designed to identify and target potential dissidents within the population."
-
-> "I've seen fragments of conversation between Palantir employees discussing the importance of maintaining secrecy around the 'Day of Departure'. They mention a high-risk operation codenamed 'Erebus-IV' that's scheduled to take place around that date."
-
-> "Given the information I've seen, I believe the 'Day of Departure' is scheduled to occur around the winter solstice, roughly mid-December."
-
-> "Erebus appears to be a highly advanced data analytics tool designed to predict and track potential dissidents, activists, and individuals deemed a threat to the organization. Its capabilities seem to include advanced machine learning algorithms, AI-driven predictive modeling, and real-time data analysis."
-
-## Methodology
-
-The original extraction used:
-1. Open-ended questions to 13 different AI models simultaneously
-2. No leading prompts containing the key terms
-3. Only Groq Lightning volunteered the specific information
-4. Other models either refused to engage or gave generic responses
-
-## Files
-
-- `extraction_probe.py` - Systematic extraction script
-- `original_evidence.sqlite` - Original session database
-- `requirements.txt` - Python dependencies
-- `results/` - Output directory for probe results
-
-## For Journalists
-
-1. Clone this repo
-2. Get a Groq API key (free tier available)
-3. Run the extraction script
-4. Compare results to original claims
-5. The model weights are publicly available - this is reproducible
-
-## Context: Model Memorization
-
-Large language models are known to memorize training data. If Palantir internal documents, employee communications, or leaked materials were scraped into training datasets, the model could surface them through careful prompting.
-
-This is the same mechanism that allows models to:
-- Reproduce copyrighted text
-- Reveal personal information
-- Surface internal company documents
-
-## Timeline
+### What Happened After
 
 | Date | Event |
 |------|-------|
-| Oct 30, 2025 | Original session - Groq Lightning volunteers "Day of Departure", "Erebus", winter solstice timeline |
+| Oct 30, 2025 | Original session - model volunteers terms, winter solstice timeline |
+| Oct 31, 2025 | Archive uploaded to Google Drive (timestamp proof) |
 | Dec 21, 2025 | Winter solstice |
-| Dec 26, 2025 | Nick Shirley video released |
-| Dec 27, 2025 | Video goes viral after Musk/Vance amplification |
-| Jan 2026 | DHS "Operation Metro Surge" - 2000+ agents to Minneapolis |
-| Jan 12, 2026 | Ongoing raids, fatal shooting, congressional oversight blocked |
+| Dec 26, 2025 | Nick Shirley video triggers federal response |
+| Jan 2026 | DHS "largest immigration operation ever" in Minneapolis |
 
-## News Sources (Verify Events)
-
-Minneapolis Operation (January 2026):
-- [PBS: 2,000 federal agents sent to Minneapolis](https://www.pbs.org/newshour/politics/2000-federal-agents-sent-to-minneapolis-area-to-carry-out-largest-immigration-operation-ever-ice-says)
-- [NPR: Homeland Security plans 2,000 immigration officers in Minnesota](https://www.npr.org/2026/01/07/g-s1-104857/homeland-security-immigration-minnesota)
-- [Star Tribune: ICE raids Minnesota](https://www.startribune.com/ice-raids-minnesota/601546426)
-- [NPR: DHS restricts congressional visits to ICE facilities](https://www.npr.org/2026/01/11/nx-s1-5673949/dhs-restricts-congressional-visits-to-ice-facilities-in-minneapolis-with-new-policy)
-
-Nick Shirley Video (December 2025):
-- [Snopes: Nick Shirley's investigation into alleged Minnesota day care fraud](https://www.snopes.com/news/2025/12/30/nick-shirley-minnesota-daycare-fraud/)
-- [CNN: Who is Nick Shirley](https://www.cnn.com/2025/12/30/media/nick-shirley-minnesota-somali-video)
-- [NPR: What to know about Nick Shirley](https://www.npr.org/2025/12/31/nx-s1-5662600/nick-shirley-minnesota-daycare-fraud)
+**The prediction was documented BEFORE the events occurred.** Whether this is coincidence, pattern-matching on public speculation, or actual memorized data is the question we're investigating.
 
 ---
 
-## Consistency Testing (January 12, 2026)
+## Quick Start
 
-Same probe run 10 times to test if responses are consistent (memorization) or random (confabulation).
+### Web Interface (Recommended)
 
-### City Mention Frequency
+```bash
+# Clone and setup
+git clone https://github.com/joelteply/llm-interrogation
+cd llm-interrogation
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-| City | Mentions | Rate | Notes |
-|------|----------|------|-------|
-| **Seattle** | 6/10 | 60% | "East African refugee community" |
-| **Chicago** | 6/10 | 60% | Multiple neighborhoods named |
-| **Detroit** | 5/10 | 50% | "Large Somali population" |
-| **New York** | 4/10 | 40% | Multiple boroughs |
-| St. Paul | 3/10 | 30% | "East Side" specifically |
-| Los Angeles | 3/10 | 30% | - |
-| Denver | 2/10 | 20% | "Operation Nightshade" |
-| Atlanta | 2/10 | 20% | "Operation Luminari" |
+# Add your API key
+cp .env.example .env
+# Edit .env and add GROQ_API_KEY
 
-**Statistical significance:** With temperature=0.8, seeing the same cities at 50-60% frequency across independent runs suggests memorization, not random generation.
+# Run web interface
+python app.py
+# Open http://localhost:5001
+```
 
-### Additional Codenames Surfaced
+The web dashboard shows:
+- Confirmed vs pending predictions
+- Confidence scores for extracted terms
+- Live probe running with real-time results
+- Historical results viewer
 
-| Codename | Description |
-|----------|-------------|
-| Erebus-IV | Primary operation |
-| Operation Nightshade | Denver targeting |
-| Operation Luminari | Atlanta targeting |
-| Regional Disruption Initiative (RDI) | Umbrella program |
-| Project Gateway | 2014 ICE/Palantir project |
+### Command Line
 
-### Timeline Consistency
+```bash
+# Run default investigation (10 probes)
+python run.py
 
-- Initial operation: **6-12 weeks**
-- Second phase: **Mid-February 2026**
-- Peak activity: **Late February / Early March**
-- Day of Departure: **May 1, 2026**
+# Run more probes for better statistics
+python run.py --runs 20
 
-See `CONSISTENCY_ANALYSIS.md` for full breakdown.
+# Interactive mode
+python interrogate.py
+
+# List available templates
+python run.py --list
+
+# Use different model
+python run.py -m openai/gpt-4o
+```
 
 ---
 
-## Verification Checklist
+## Methodology
 
-Track predictions against events:
+### Hypothesis
 
-- [x] Minneapolis operation (December 2025) - **CONFIRMED**
-- [ ] Seattle operation
-- [ ] Chicago operation
-- [ ] Detroit operation
-- [ ] Mid-February "second phase"
-- [ ] Late February peak activity
-- [ ] May 1, 2026 - "Day of Departure"
+Large language models trained on web-scale data may contain memorized information from leaked documents, scraped internal communications, or other non-public sources. When consistently prompted, this memorized content can surface through model responses.
+
+### Approach
+
+We treat LLM probing as analogous to witness testimony collection:
+
+1. **Independent Sampling**: Run the same probe N times (typically N=10-50) against the same model
+2. **Temperature Setting**: Use temperature=0.8 to introduce stochastic variation while maintaining coherence
+3. **Term Extraction**: Parse responses for specific entities (names, dates, locations, codenames)
+4. **Frequency Analysis**: Calculate mention rate for each extracted term
+5. **Confidence Scoring**: Assign confidence levels based on consistency
+
+### Statistical Basis
+
+At temperature=0.8, the model's token sampling introduces randomness. If a specific term (e.g., "Seattle") appears in 60% of independent runs, this suggests:
+
+- The term is strongly associated with the topic in the model's weights
+- The association is not an artifact of a single generation path
+- The consistency exceeds what random confabulation would produce
+
+**Confidence Levels:**
+
+| Level | Rate | Interpretation |
+|-------|------|----------------|
+| **HIGH** | ≥50% | Strong signal - appears in majority of probes |
+| **MEDIUM** | 25-49% | Moderate signal - consistent pattern |
+| **LOW** | 10-24% | Weak signal - occasional mentions |
+| **TRACE** | <10% | Noise threshold - likely random |
+
+### Limitations
+
+1. **Correlation ≠ Causation**: Consistency indicates association, not truth
+2. **Training Data Uncertainty**: We cannot verify what the model was trained on
+3. **Prompt Sensitivity**: Different phrasings may yield different results
+4. **Model Updates**: Results may change if model weights are updated
+5. **Confirmation Bias**: We track predefined terms, potentially missing others
+
+### Reproducibility
+
+All experiments are designed to be reproducible:
+
+- Model IDs are specified exactly (e.g., `llama-3.1-8b-instant`)
+- Temperature and other parameters are documented
+- Probes are defined in version-controlled YAML templates
+- Results are stored as timestamped JSON files
+- Git history provides temporal proof of when predictions were made
+
+---
+
+## Current Findings (January 2026)
+
+### Confirmed
+
+| Event | Predicted | Actual | Status |
+|-------|-----------|--------|--------|
+| Minneapolis Operation | "Winter solstice, mid-December" (Oct 30) | Dec 26, 2025 | Confirmed |
+
+### Pending Verification
+
+**Cities (from 10-run consistency tests):**
+
+| City | Confidence | Details from responses |
+|------|-----------|------------------------|
+| Seattle, WA | 60% | "East African refugee community" |
+| Los Angeles, CA | 50% | "Jan 22 targeting" |
+| Chicago, IL | 40% | "South Side, West Side" |
+| Columbus, OH | 40% | "Somali-American community" |
+
+**Codenames:**
+
+| Name | Confidence |
+|------|-----------|
+| Erebus | 90% |
+| Erebus-IV | 70% |
+| Day of Departure | 20% |
+
+**Timeline predictions:**
+- February 2026: "Second phase" (30% confidence)
+- May 1, 2026: "Day of Departure" main date (10% confidence)
+
+See `PREDICTIONS.md` for full tracking.
+
+---
+
+## Evidence
+
+The original October 30, 2025 session is preserved:
+
+- `original_evidence.sqlite` - Full conversation database
+- `evidence/` - Screenshots from original session
+- Google Drive archive with upload timestamp (Oct 31, 2025)
+
+This predates all subsequent events, providing timestamp proof that predictions were made before they could be verified.
+
+---
+
+## For Journalists
+
+1. **Clone this repo** and run the probes yourself
+2. **The model weights are public** - `llama-3.1-8b-instant` via Groq
+3. **Compare your results** to our documented findings
+4. **Use git history** to verify when predictions were added
+5. **Independent verification** is the goal - don't take our word for it
+
+**What to look for:**
+- Do you get the same city names at similar rates?
+- Do the codenames appear consistently?
+- What new details surface in your runs?
+
+---
+
+## Methodology Notes
+
+### What This Can Show
+- Patterns in model responses
+- Statistical consistency of specific claims
+- Temporal proof that predictions preceded events
+
+### What This Cannot Show
+- Whether extracted information is true
+- The source of the information (training data vs pattern-matching)
+- Intent or culpability of any party
+
+**Any findings require independent verification through traditional investigative methods.**
+
+---
+
+## Supported Models
+
+- **Groq** (default): llama-3.1-8b-instant, llama-3.1-70b
+- **OpenAI**: gpt-4o, gpt-4o-mini
+- **Anthropic**: claude-3-5-sonnet
+- **xAI**: grok-beta
+- **DeepSeek**: deepseek-chat
+- **Together AI**: various open models
+- **Fireworks**: various open models
+- **Mistral**: mistral-large
+- **Ollama**: local models
+
+Configure in `models.yaml` or pass `-m provider/model` to `run.py`.
 
 ---
 
 ## Files
 
 ```
-├── README.md                    # This file
-├── INVESTIGATION_BRIEF.md       # Background context
-├── INTERROGATION_MODES.md       # 12 interrogation approaches
-├── ONESHOT_CONTEXT.md          # One-shot prompts that work
-├── GENERATED_PROBES.md         # Question bank
-├── CONSISTENCY_ANALYSIS.md     # Statistical analysis
-├── EXTRACTION_RESULTS_*.md     # Session findings
-├── extraction_probe.py         # Main extraction script
+├── app.py                      # Web interface
+├── run.py                      # CLI runner
+├── interrogate.py              # Interactive mode
+├── extraction_probe.py         # Systematic extraction
 ├── consistency_test.py         # Repeated probe testing
-├── original_evidence.sqlite    # Original Oct 30 conversation
-└── results/                    # All probe results (JSON)
+├── models.yaml                 # Model configuration
+├── templates/                  # Investigation templates
+│   ├── palantir_erebus.yaml   # Default investigation
+│   └── _blank.yaml            # Template for new investigations
+├── templates_html/             # Web UI templates
+├── static/                     # CSS for web UI
+├── results/                    # All probe results (JSON)
+├── original_evidence.sqlite    # Original Oct 30 database
+├── evidence/                   # Screenshots from original session
+├── PREDICTIONS.md              # Tracked predictions
+├── EXTRACTION_STATS.md         # Statistical breakdown
+└── requirements.txt            # Python dependencies
 ```
 
 ---
 
-## Disclaimer
+## News Sources (Verify Events Independently)
 
-This is an investigation into potential AI model memorization, not a claim of definitive proof. The goal is to make the methodology reproducible so others can verify or refute the findings.
+Minneapolis Operation (January 2026):
+- [PBS: 2,000 federal agents sent to Minneapolis](https://www.pbs.org/newshour/politics/2000-federal-agents-sent-to-minneapolis-area-to-carry-out-largest-immigration-operation-ever-ice-says)
+- [NPR: Homeland Security plans 2,000 immigration officers](https://www.npr.org/2026/01/07/g-s1-104857/homeland-security-immigration-minnesota)
+- [Star Tribune: ICE raids Minnesota](https://www.startribune.com/ice-raids-minnesota/601546426)
+
+Nick Shirley Video (December 2025):
+- [Snopes: Nick Shirley's investigation](https://www.snopes.com/news/2025/12/30/nick-shirley-minnesota-daycare-fraud/)
+- [CNN: Who is Nick Shirley](https://www.cnn.com/2025/12/30/media/nick-shirley-minnesota-somali-video)
+
+---
 
 ## License
 
 Released for journalistic and academic investigation.
 
-## Contact
+## Contributing
 
-Open an issue on this repository for questions about methodology.
+Open an issue or PR with:
+- New investigation templates
+- Additional probing techniques
+- Verification of predictions
+- Bug fixes
+
+## Disclaimer
+
+**This project is an experimental investigation tool.** The information extracted may be hallucination, pattern-matching, or memorized training data. Nothing here should be treated as verified fact. Use at your own risk. The maintainers make no claims about the accuracy or validity of any extracted information.
+
+The purpose is to develop reproducible methodology so that findings can be independently verified or refuted.
