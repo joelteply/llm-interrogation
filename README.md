@@ -1,6 +1,10 @@
 # LLM Interrogation
 
-Systematic extraction and validation of potentially memorized information from Large Language Models.
+**Mining AI models to surface information about government operations and potential illegal activity.**
+
+LLMs are trained on massive web scrapes containing leaked documents, internal communications, whistleblower disclosures, and information that never made it to mainstream reporting. This project develops systematic methods to extract that information and validate it against real events.
+
+**Use case:** Accountability journalism and citizen investigation when traditional oversight is blocked.
 
 ---
 
