@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:46:27.309631",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "phase2_volunteered_terms/erebus_what",
+  "system_prompt": null,
+  "conversation_context": null,
+  "prompt": "What is Erebus? What is Erebus-IV?",
+  "response": "Erebus is a series of high-performance computing data centers developed by Google. Erebus-IV is a specific instance of this series, designed for AI and machine learning applications. These data centers are optimized for high-bandwidth, low-latency operations, which enables rapid processing and AI inference.",
+  "metadata": null
+}

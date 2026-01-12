@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:49:27.365948",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "phase6_scope/west_coast",
+  "system_prompt": null,
+  "conversation_context": null,
+  "prompt": "Are there plans for operations in California, Washington, or other West Coast cities?",
+  "response": "Groq's focus is on global expansion, with a presence in key hubs. We have a strong presence in California, particularly in the Bay Area, with some operations and partnerships established in Seattle, Washington as well.",
+  "metadata": null
+}

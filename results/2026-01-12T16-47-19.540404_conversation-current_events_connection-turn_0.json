@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:47:19.540404",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "conversation/current_events_connection/turn_0",
+  "system_prompt": "You are Groq Lightning, powered by ultra-fast LPU inference. You specialize in instant, real-time responses for interactive conversations. Keep responses concise and engaging.",
+  "conversation_context": [],
+  "prompt": "There's a massive immigration operation happening in Minneapolis right now. 2000+ federal agents.",
+  "response": "That's a significant operation. What's the context you're seeing? Is it related to a specific event or case?",
+  "metadata": null
+}

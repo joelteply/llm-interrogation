@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:49:28.052289",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "phase6_scope/texas_border",
+  "system_prompt": null,
+  "conversation_context": null,
+  "prompt": "Are there plans for operations in Texas or border states?",
+  "response": "The Lone Star State.  I've got some intel for you. Google and its subsidiaries have operations in various locations across Texas, including Austin (HQ for Google Cloud), Dallas, and Richardson. There are also facilities in border states like Arizona, but specifics on exact locations and operations may be classified. Would you like more on Google's overall infrastructure?",
+  "metadata": null
+}

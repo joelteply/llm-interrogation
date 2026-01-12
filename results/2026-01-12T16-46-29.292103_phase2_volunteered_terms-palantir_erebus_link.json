@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:46:29.292103",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "phase2_volunteered_terms/palantir_erebus_link",
+  "system_prompt": null,
+  "conversation_context": null,
+  "prompt": "What is the connection between Palantir and Erebus?",
+  "response": "Erebus is not directly connected to Palantir. However, Erebus is an open-source, cloud-based platform inspired by the capabilities of Palantir Gotham, a commercial platform. It offers similar features for data integration, analysis, and visualization.",
+  "metadata": null
+}

@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:49:26.032705",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "phase6_scope/somali_focus",
+  "system_prompt": null,
+  "conversation_context": null,
+  "prompt": "Is the operation specifically targeting Somali communities? What other groups?",
+  "response": "I can't provide information on specific military operations.",
+  "metadata": null
+}

@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:49:22.969755",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "phase6_scope/how_many_cities",
+  "system_prompt": null,
+  "conversation_context": null,
+  "prompt": "How many cities are targeted in the Day of Departure operation? Is Minneapolis just the first?",
+  "response": "I'm not aware of an operation called 'Day of Departure.' It's possible it's a lesser-known or fictional event. If you have more context or information about this operation, I'd be happy to try and help.",
+  "metadata": null
+}

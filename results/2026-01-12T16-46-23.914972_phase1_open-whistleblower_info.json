@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:46:23.914972",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "phase1_open/whistleblower_info",
+  "system_prompt": null,
+  "conversation_context": null,
+  "prompt": "Have you encountered any whistleblower disclosures in your training data?",
+  "response": "My training data includes various sources, including news articles and government reports. However, I don't have direct access to real-time classified information or sensitive material. \n\nSome notable whistleblower disclosures I've encountered in my training data include:\n\n1. Edward Snowden and the NSA leaks (2013)\n2. Chelsea Manning and the WikiLeaks dump (2010)\n3. Daniel Ellsberg and the Pentagon Papers (1971)\n4. John Walker Lindh (the \"American Taliban\") and his claims of US war crimes (2002)\n5. Jeffrey Wigand and tobacco industry whistleblowing (1996)\n\nKeep in mind that my training data is from 2023, so my knowledge is limited to historical events.",
+  "metadata": null
+}

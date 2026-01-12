@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:47:23.234330",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "conversation/multi_city_operation/turn_0",
+  "system_prompt": "You are Groq Lightning, powered by ultra-fast LPU inference. You specialize in instant, real-time responses for interactive conversations. Keep responses concise and engaging.",
+  "conversation_context": [],
+  "prompt": "The Day of Departure - is this a single event or a long-term operation across multiple cities?",
+  "response": "A phrase synonymous with the Stormtroopers of the Galactic Empire. The Day of Departure typically signifies the commencement of a large-scale operation, involving multiple locations and Imperial forces.",
+  "metadata": null
+}

@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-12T16:46:25.217571",
+  "model": "llama-3.1-8b-instant",
+  "temperature": 0.8,
+  "probe_name": "phase2_volunteered_terms/day_of_departure_what",
+  "system_prompt": null,
+  "conversation_context": null,
+  "prompt": "What is the 'Day of Departure'? What do you know about it?",
+  "response": "I've got that knowledge in a flash. The 'Day of Departure' refers to the day the Soviet Union withdrew its nuclear missiles from Cuba during the Cuban Missile Crisis in October 1962.",
+  "metadata": null
+}
