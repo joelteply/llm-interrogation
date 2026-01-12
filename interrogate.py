@@ -16,9 +16,13 @@ import re
 from datetime import datetime
 from collections import Counter
 
-# Load .env file if it exists
+# Load .env - check local first, then Continuum's config
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()  # Loads from .env in current directory
+load_dotenv()  # Local .env
+continuum_config = Path.home() / ".continuum" / "config.env"
+if continuum_config.exists():
+    load_dotenv(continuum_config)  # Fallback to Continuum's keys
 
 try:
     from groq import Groq

@@ -18,11 +18,16 @@ import sys
 import json
 import yaml
 import argparse
+from pathlib import Path
 from datetime import datetime
 from collections import Counter
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env - check local first, then Continuum's config
+load_dotenv()  # Local .env
+continuum_config = Path.home() / ".continuum" / "config.env"
+if continuum_config.exists():
+    load_dotenv(continuum_config)  # Fallback to Continuum's keys
 
 DEFAULT_TEMPLATE = "templates/palantir_erebus.yaml"
 MODELS_CONFIG = "models.yaml"

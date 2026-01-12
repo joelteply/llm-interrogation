@@ -29,11 +29,15 @@ import os
 import json
 import time
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 from groq import Groq
 
-# Load .env file
+# Load .env - check local first, then Continuum's config
 load_dotenv()
+continuum_config = Path.home() / ".continuum" / "config.env"
+if continuum_config.exists():
+    load_dotenv(continuum_config)
 
 if not os.environ.get("GROQ_API_KEY"):
     print("GROQ_API_KEY not found! Copy .env.example to .env and add your key.")
