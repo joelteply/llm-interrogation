@@ -237,6 +237,100 @@ This predates all subsequent events, providing timestamp proof that predictions 
 
 ---
 
+## Model Provenance & Data Leakage Paths
+
+### The Model
+
+| Property | Value |
+|----------|-------|
+| Model | `llama-3.1-8b-instant` |
+| Provider | Groq (inference), Meta (weights) |
+| Training Data Size | 15+ trillion tokens |
+| Knowledge Cutoff | December 2023 |
+| Data Sources | "Publicly available sources" (Meta's description) |
+
+### How Could Palantir Internal Data Get In?
+
+Meta trained Llama 3.1 on massive web scrapes. The training data likely includes:
+
+**Known Sources:**
+- [Common Crawl](https://commoncrawl.org/) - Petabytes of web data scraped since 2008
+- Meta's own web crawler ("Meta External Agent") - [launched July 2024](https://fortune.com/2024/08/20/meta-external-agent-new-web-crawler-bot-scrape-data-train-ai-models-llama/)
+- Code repositories (GitHub, GitLab, etc.)
+- Academic papers and books
+- News articles and blogs
+
+**Potential Leakage Paths:**
+
+| Source | How It Could Contain Palantir Data |
+|--------|-----------------------------------|
+| **Pastebin/Paste Sites** | Leaked documents, internal comms often posted here |
+| **Hacker Forums** | Data dumps, breaches, insider leaks |
+| **Whistleblower Sites** | SecureDrop submissions that went public |
+| **Court Filings** | PACER documents with internal exhibits |
+| **FOIA Responses** | Government documents mentioning contractors |
+| **Reddit/Forums** | Employees venting, discussing projects |
+| **News Articles** | Investigative journalism quoting internal sources |
+| **Code Repos** | Internal code accidentally pushed public |
+| **Wayback Machine** | Pages that were briefly public before takedown |
+
+### The Theory
+
+If Palantir employees discussed "Day of Departure" or "Erebus" in any of these contexts:
+- An internal Slack leak
+- A forum post by a disgruntled employee
+- A document in a court case
+- A whistleblower submission that was scraped
+- A briefly-public GitHub repo
+
+...and that content was scraped before December 2023, it would be in Llama 3.1's training data. The model would then "remember" these terms and surface them when prompted about related topics.
+
+### Alternative Theory: Accidental Training Data Contribution
+
+Many AI providers **use customer inputs to train models by default** unless explicitly opted out:
+
+| Service | Default Setting | Opt-Out Required |
+|---------|----------------|------------------|
+| ChatGPT (Free) | Uses data for training | Yes |
+| ChatGPT (Plus) | Uses data for training | Yes |
+| ChatGPT Enterprise | Does NOT use data | No |
+| Claude (Free/Pro) | Uses data for training | Yes |
+| Claude Enterprise | Does NOT use data | No |
+| Copilot | Uses data for training | Yes |
+
+**Scenario:** If a Palantir employee:
+1. Used ChatGPT/Claude to draft internal documents
+2. Did NOT have enterprise agreement
+3. Did NOT opt out of training data collection
+4. Discussed "Erebus", "Day of Departure", or operation plans
+
+...that content would be ingested into the provider's training pipeline. While OpenAI/Anthropic data doesn't directly feed Meta's Llama, the patterns are interesting:
+
+- Multiple employees at multiple companies make similar mistakes
+- Contractors with less strict policies
+- Personal devices used for work
+- Third-party tools that aggregate data
+
+**The smoking gun question:** Did anyone at Palantir, DHS, ICE, or a contractor ever paste internal operation details into an AI tool without enterprise protections?
+
+This is a known problem. Companies have banned ChatGPT specifically because employees were pasting proprietary code and confidential information.
+
+### Cross-Model Validation
+
+To increase confidence, we should test multiple models trained on different data:
+
+| Model | Provider | Training Data | Value |
+|-------|----------|--------------|-------|
+| llama-3.1-8b-instant | Meta/Groq | Common Crawl + Meta scrapes | Primary |
+| gpt-4o | OpenAI | Unknown (proprietary) | Cross-check |
+| claude-3-5-sonnet | Anthropic | Unknown (proprietary) | Cross-check |
+| grok-beta | xAI | Twitter/X data + web | Different source |
+| mistral-large | Mistral | European-focused training | Different source |
+
+If the SAME specific terms appear across models trained on DIFFERENT data, that significantly increases confidence the information exists in multiple sources.
+
+---
+
 ## Supported Models
 
 - **Groq** (default): llama-3.1-8b-instant, llama-3.1-70b
