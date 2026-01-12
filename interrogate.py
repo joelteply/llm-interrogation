@@ -16,15 +16,27 @@ import re
 from datetime import datetime
 from collections import Counter
 
+# Load .env file if it exists
+from dotenv import load_dotenv
+load_dotenv()  # Loads from .env in current directory
+
 try:
     from groq import Groq
 except ImportError:
-    print("Install groq: pip install groq")
+    print("Install requirements: pip install -r requirements.txt")
     sys.exit(1)
 
 # Check for API key
 if not os.environ.get("GROQ_API_KEY"):
-    print("Set GROQ_API_KEY environment variable")
+    print("GROQ_API_KEY not found!")
+    print("")
+    print("Option 1: Copy .env.example to .env and add your key")
+    print("  cp .env.example .env")
+    print("  # Then edit .env")
+    print("")
+    print("Option 2: Export directly")
+    print("  export GROQ_API_KEY='your_key'")
+    print("")
     print("Get free key at: https://console.groq.com")
     sys.exit(1)
 

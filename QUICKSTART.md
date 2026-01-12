@@ -19,7 +19,9 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-export GROQ_API_KEY="your_key_here"
+# Add your API key
+cp .env.example .env
+# Edit .env and paste your GROQ_API_KEY
 ```
 
 ## 3. Run Your First Probe
