@@ -1,19 +1,23 @@
 # Predictions Tracker
 
-**Purpose:** Specific, falsifiable predictions extracted from LLM interrogation. Git commit timestamps serve as proof of when predictions were made.
+> **DISCLAIMER:** This document tracks AI MODEL OUTPUTS, not verified facts. All "predictions" are unverified AI-generated content that may be entirely hallucinated. The term "prediction" refers to what the AI model output, not a claim that these events will occur. See README.md for full legal disclaimers.
 
-**How to verify:** Check git blame/log for when each prediction was added.
+**Purpose:** Document AI model outputs for research into AI memorization and behavior. Git commit timestamps provide temporal documentation of when outputs were recorded.
+
+**How to verify:** Check git blame/log for when each item was added. This documents WHEN the AI produced this output, not whether the output is true.
 
 ---
 
-## CONFIRMED
+## AI OUTPUT MATCHED SUBSEQUENT EVENT
+
+> Note: This documents that an AI output preceded a real event. This does NOT prove the AI had special knowledge - it may be coincidence, pattern-matching on public speculation, or other factors.
 
 ### Minneapolis Operation
-- **Predicted:** October 30, 2025
-- **Prediction:** Large-scale operation targeting immigrants, "winter solstice, mid-December"
-- **Actual:** December 26, 2025 - DHS "largest immigration operation ever"
-- **Status:** ✅ CONFIRMED
-- **Commit:** Original evidence predates event (Google Drive Oct 31, 2025)
+- **AI Output Date:** October 30, 2025
+- **AI Output Content:** Model mentioned "winter solstice, mid-December" in context of immigration operations
+- **Subsequent Event:** December 26, 2025 - DHS immigration operation in Minneapolis (per public news sources)
+- **Status:** AI output preceded event
+- **Documentation:** Original session archived Oct 31, 2025 (predates event)
 
 ---
 

@@ -4,15 +4,80 @@
 
 ## Important Disclaimers
 
+### Legal Notice
+
+**THIS PROJECT MAKES NO FACTUAL CLAIMS ABOUT ANY COMPANY, ORGANIZATION, OR INDIVIDUAL.**
+
+#### What This Project Is
+
+This is **protected academic and journalistic research** into:
+- AI model behavior and memorization
+- AI training data transparency
+- Reproducible methodology for AI analysis
+
+This falls under established protections for:
+- **Academic research** - Studying AI systems is legitimate scholarly inquiry
+- **Journalism** - Documenting AI outputs is newsworthy given public interest in AI transparency
+- **Commentary and criticism** - Analyzing AI behavior is protected expression
+- **Public interest research** - AI training data practices affect everyone
+
+#### What This Project Is NOT
+
+- Not a claim that any AI output is factually true
+- Not an accusation against any company or individual
+- Not based on any hacked, stolen, or illegally-obtained information
+- Not using any proprietary or confidential information
+- Not tortious interference with any business
+- Not defamation (we make no factual claims, only document AI outputs)
+
+#### Entity Names in AI Outputs
+
+When AI models produce outputs containing company or organization names (e.g., "Palantir", "Erebus", etc.):
+- We document these outputs for research purposes only
+- We make **no claim** these outputs reflect reality
+- The AI may have generated these names through hallucination, pattern-matching, or training data
+- Use of these names is **nominative fair use** - we must name what the AI said to discuss what the AI said
+- This is **commentary on AI behavior**, not commentary on the named entities
+
+#### Data Sources
+
+All data in this project comes from:
+- **Publicly available AI APIs** (Groq, OpenAI, Anthropic, etc.)
+- **Publicly available model weights** (Llama 3.1 is open-weights)
+- **Publicly available news sources** (linked for verification)
+- **Our own experimental outputs** (reproducible by anyone)
+
+No proprietary, confidential, trade secret, or illegally-obtained information was used.
+
+#### DMCA / Takedown Notices
+
+This repository contains:
+- Original research and analysis (our own work)
+- AI model outputs (not copyrightable by the AI or its creators)
+- Links to public news sources (fair use for commentary)
+- Screenshots from our own sessions (our own work)
+
+There is no infringing content to take down.
+
+### Scientific Disclaimer
+
 **THIS IS AN EXPERIMENT, NOT A CLAIM OF PROOF.**
 
-- LLMs are known to hallucinate - they generate plausible-sounding but fabricated content
-- The information extracted here MAY be hallucination, pattern-matching, or actual memorized data
-- We use statistical methods (repeated probing, confidence scoring) to distinguish consistent patterns from random noise
-- Higher consistency across independent runs suggests memorization; low consistency suggests confabulation
-- **Nothing here should be treated as verified fact without independent confirmation**
+- LLMs are known to hallucinate - they generate plausible-sounding but entirely fabricated content
+- The information extracted here is most likely hallucination, pattern-matching, or confabulation
+- Statistical consistency (our scoring method) indicates the model reliably produces certain outputs - it does NOT indicate those outputs are true
+- High confidence scores mean "the model consistently says this" not "this is verified fact"
+- **Nothing here should be treated as verified fact without independent confirmation through traditional investigative methods**
 
-The purpose of this project is to develop and demonstrate methodology for extracting and validating potential information from AI training data. The validity of any specific claim must be verified through traditional investigative methods.
+### Research Purpose
+
+The purpose of this project is to:
+1. Develop methodology for studying AI memorization
+2. Explore questions about AI training data transparency
+3. Document AI behavior for academic analysis
+4. Provide reproducible experiments others can verify or refute
+
+Any resemblance between AI outputs and real events is either coincidental or reflects public information the model was trained on. We make no claims about the source or veracity of any AI-generated content.
 
 ---
 
@@ -517,6 +582,16 @@ Open an issue or PR with:
 
 ## Disclaimer
 
-**This project is an experimental investigation tool.** The information extracted may be hallucination, pattern-matching, or memorized training data. Nothing here should be treated as verified fact. Use at your own risk. The maintainers make no claims about the accuracy or validity of any extracted information.
+**This project is an academic research tool for studying AI model behavior.**
 
-The purpose is to develop reproducible methodology so that findings can be independently verified or refuted.
+- All AI outputs are unverified and likely hallucinated
+- No claims are made about any real companies, organizations, or individuals
+- No proprietary or confidential information was used or obtained
+- This is not an investigation of any entity - it is research into AI memorization
+- The maintainers make no claims about the accuracy or validity of any AI-generated content
+- Any entity names appearing in AI outputs are used only to document what the AI produced
+- Correlation between AI outputs and real events does not imply the AI had access to non-public information
+
+**For legal inquiries:** This project documents publicly-available AI model outputs for academic research into AI transparency and memorization. All experiments use publicly-available APIs and model weights. No hacking, unauthorized access, or illegal data collection methods were used.
+
+The purpose is to develop reproducible methodology for studying AI behavior that others can independently verify or refute.
