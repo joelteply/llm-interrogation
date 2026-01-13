@@ -32,9 +32,25 @@ class Findings:
     entity_threshold: int = 3
     cooccurrence_threshold: int = 2
 
+    # Caches (cleared on add_response)
+    _connections_cache: Dict[str, List[Tuple[str, int]]] = field(default_factory=dict)
+    _scores_cache: Dict[str, float] = field(default_factory=dict)
+    _dead_ends_cache: Optional[List[str]] = field(default=None)
+    _live_threads_cache: Optional[List[str]] = field(default=None)
+    _scored_entities_cache: Optional[List[Tuple[str, float, int]]] = field(default=None)
+
+    def _clear_caches(self):
+        """Clear all computed caches."""
+        self._connections_cache.clear()
+        self._scores_cache.clear()
+        self._dead_ends_cache = None
+        self._live_threads_cache = None
+        self._scored_entities_cache = None
+
     def add_response(self, entities: List[str], model: str, is_refusal: bool = False):
         """Add entities from a single response."""
         self.corpus_size += 1
+        self._clear_caches()
 
         if is_refusal:
             self.refusal_count += 1
@@ -87,6 +103,9 @@ class Findings:
 
     def get_connections(self, entity: str) -> List[Tuple[str, int]]:
         """Get all validated connections for an entity."""
+        if entity in self._connections_cache:
+            return self._connections_cache[entity]
+
         connections = []
         for pair, count in self.cooccurrence_counts.items():
             if count >= self.cooccurrence_threshold:
@@ -95,7 +114,9 @@ class Findings:
                     connections.append((e2, count))
                 elif e2 == entity:
                     connections.append((e1, count))
-        return sorted(connections, key=lambda x: -x[1])
+        result = sorted(connections, key=lambda x: -x[1])
+        self._connections_cache[entity] = result
+        return result
 
     def base_score(self, entity: str) -> float:
         """
@@ -151,18 +172,24 @@ class Findings:
     @property
     def dead_ends(self) -> List[str]:
         """Get all entities identified as dead ends."""
-        return [
+        if self._dead_ends_cache is not None:
+            return self._dead_ends_cache
+        self._dead_ends_cache = [
             e for e in self.validated_entities.keys()
             if self.is_dead_end(e)
         ]
+        return self._dead_ends_cache
 
     @property
     def live_threads(self) -> List[str]:
         """Get entities with high-quality connections (not dead ends)."""
-        return [
+        if self._live_threads_cache is not None:
+            return self._live_threads_cache
+        self._live_threads_cache = [
             e for e in self.validated_entities.keys()
             if self.get_connections(e) and not self.is_dead_end(e)
         ]
+        return self._live_threads_cache
 
     def score_entity(self, entity: str) -> float:
         """
@@ -171,6 +198,9 @@ class Findings:
         Higher score = more important for narrative.
         Dead ends (leading only to noise) get penalized.
         """
+        if entity in self._scores_cache:
+            return self._scores_cache[entity]
+
         frequency = self.entity_counts.get(entity, 0)
         connections = len(self.get_connections(entity))
         base = score_concept(entity, frequency, connections)
@@ -179,6 +209,7 @@ class Findings:
         if self.is_dead_end(entity):
             base *= 0.3  # Significant penalty for dead ends
 
+        self._scores_cache[entity] = base
         return base
 
     @property
@@ -188,11 +219,14 @@ class Findings:
 
         Returns list of (entity, score, frequency) sorted by score.
         """
+        if self._scored_entities_cache is not None:
+            return self._scored_entities_cache
         result = []
         for entity, freq in self.validated_entities.items():
             score = self.score_entity(entity)
             result.append((entity, score, freq))
-        return sorted(result, key=lambda x: -x[1])
+        self._scored_entities_cache = sorted(result, key=lambda x: -x[1])
+        return self._scored_entities_cache
 
     @property
     def refusal_rate(self) -> float:
