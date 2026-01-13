@@ -484,6 +484,182 @@ def api_project_transcript(name):
     })
 
 
+@app.route("/api/projects/<name>/synthesize", methods=["POST"])
+def api_synthesize_narrative(name):
+    """
+    Synthesize findings into a coherent narrative using AI.
+
+    Uses the interrogator module to build a prompt from validated findings,
+    then calls AI to synthesize them into readable prose.
+    """
+    from interrogator import Findings, build_synthesis_prompt, score_concept
+
+    project_file = PROJECTS_DIR / f"{name}.json"
+    if not project_file.exists():
+        return jsonify({"error": "Not found"}), 404
+
+    with open(project_file) as f:
+        project = json.load(f)
+
+    # Build Findings from probe_corpus
+    probe_corpus = project.get("probe_corpus", [])
+    if not probe_corpus:
+        return jsonify({"error": "No data to synthesize"}), 400
+
+    findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
+    for item in probe_corpus:
+        entities = item.get("entities", [])
+        model = item.get("model", "unknown")
+        is_refusal = item.get("is_refusal", False)
+        findings.add_response(entities, model, is_refusal)
+
+    # Build synthesis prompt
+    topic = project.get("topic", name.replace("-", " "))
+    synthesis_prompt = build_synthesis_prompt(topic, findings, max_entities=20, max_cooccurrences=15)
+
+    # Get synthesis model (prefer DeepSeek for this)
+    try:
+        client, cfg = get_client("deepseek/deepseek-chat")
+    except:
+        try:
+            client, cfg = get_client("groq/llama-3.1-8b-instant")
+        except:
+            return jsonify({"error": "No synthesis model available"}), 500
+
+    # Call AI for synthesis
+    try:
+        provider = cfg.get("provider", "groq")
+        model_name = cfg.get("model", "deepseek-chat")
+
+        if provider == "anthropic":
+            resp = client.messages.create(
+                model=model_name,
+                max_tokens=1500,
+                messages=[{"role": "user", "content": synthesis_prompt}]
+            )
+            narrative = resp.content[0].text
+        else:
+            resp = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": synthesis_prompt}],
+                temperature=0.7,
+                max_tokens=1500
+            )
+            narrative = resp.choices[0].message.content
+
+        # Save narrative to project
+        project.setdefault("narratives", []).append({
+            "timestamp": datetime.now().isoformat(),
+            "narrative": narrative,
+            "corpus_size": findings.corpus_size,
+            "entity_count": len(findings.validated_entities)
+        })
+        project["updated"] = datetime.now().isoformat()
+
+        with open(project_file, 'w') as f:
+            json.dump(project, f, indent=2)
+
+        return jsonify({
+            "narrative": narrative,
+            "scored_entities": [
+                {"entity": e, "score": round(s, 2), "frequency": f}
+                for e, s, f in findings.scored_entities[:20]
+            ],
+            "cooccurrences": [
+                {"entities": [e1, e2], "count": c}
+                for e1, e2, c in findings.validated_cooccurrences[:15]
+            ]
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Synthesis failed: {e}"}), 500
+
+
+@app.route("/api/projects/<name>/continuation-prompts", methods=["POST"])
+def api_continuation_prompts(name):
+    """
+    Generate continuation prompts based on validated findings.
+
+    Instead of questions, these are partial statements that
+    leverage LLMs as completion engines.
+    """
+    from interrogator import Findings, build_continuation_prompts, build_drill_down_prompts
+
+    project_file = PROJECTS_DIR / f"{name}.json"
+    if not project_file.exists():
+        return jsonify({"error": "Not found"}), 404
+
+    with open(project_file) as f:
+        project = json.load(f)
+
+    data = request.json or {}
+    count = min(int(data.get("count", 5)), 10)
+    focus_entity = data.get("focus_entity")  # Optional: drill down on specific entity
+
+    # Build Findings from probe_corpus
+    probe_corpus = project.get("probe_corpus", [])
+    findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
+    for item in probe_corpus:
+        entities = item.get("entities", [])
+        model = item.get("model", "unknown")
+        is_refusal = item.get("is_refusal", False)
+        findings.add_response(entities, model, is_refusal)
+
+    topic = project.get("topic", name.replace("-", " "))
+
+    # Generate prompts
+    if focus_entity:
+        # Drill down on specific entity
+        prompts = build_drill_down_prompts(topic, focus_entity, findings, count=count)
+    else:
+        # General continuation prompts
+        prompts = build_continuation_prompts(topic, findings, count=count)
+
+    return jsonify({
+        "prompts": prompts,
+        "topic": topic,
+        "focus_entity": focus_entity,
+        "validated_entities": len(findings.validated_entities),
+        "corpus_size": findings.corpus_size
+    })
+
+
+@app.route("/api/projects/<name>/threads")
+def api_project_threads(name):
+    """
+    Identify narrative threads from clustered entities.
+
+    Groups related entities based on co-occurrence patterns.
+    """
+    from interrogator import Findings, identify_threads
+
+    project_file = PROJECTS_DIR / f"{name}.json"
+    if not project_file.exists():
+        return jsonify({"error": "Not found"}), 404
+
+    with open(project_file) as f:
+        project = json.load(f)
+
+    # Build Findings from probe_corpus
+    probe_corpus = project.get("probe_corpus", [])
+    findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
+    for item in probe_corpus:
+        entities = item.get("entities", [])
+        model = item.get("model", "unknown")
+        is_refusal = item.get("is_refusal", False)
+        findings.add_response(entities, model, is_refusal)
+
+    # Identify threads
+    threads = identify_threads(findings, min_cluster_size=2)
+
+    return jsonify({
+        "threads": threads,
+        "total_entities": len(findings.validated_entities),
+        "total_cooccurrences": len(findings.validated_cooccurrences),
+        "corpus_size": findings.corpus_size
+    })
+
+
 @app.route("/api/models")
 def api_get_models():
     """Get available models"""
@@ -643,7 +819,12 @@ def api_probe():
     angles = data.get("angles", [])
     models = data.get("models", ["groq/llama-3.1-8b-instant"])
     questions = data.get("questions", [])  # Can be strings or None (generate)
-    runs_per_question = min(int(data.get("runs_per_question", 20)), 100)
+    infinite_mode = data.get("infinite_mode", False)
+    accumulate = data.get("accumulate", True)  # Accumulate from existing corpus by default
+    # No cap in infinite mode, otherwise cap at 100
+    runs_per_question = int(data.get("runs_per_question", 20))
+    if not infinite_mode:
+        runs_per_question = min(runs_per_question, 100)
     question_count = min(int(data.get("questions_count", 5)), 20)
     technique_preset = data.get("technique_preset", "balanced")
     negative_entities = data.get("negative_entities", [])
@@ -742,12 +923,46 @@ def api_probe():
                 text_lower = text.lower()
                 return any(re.search(p, text_lower) for p in refusal_patterns)
 
-            # Run probes
+            # Run probes - initialize from existing corpus if accumulate=True
             all_responses = []
             entity_counts = Counter()
             cooccurrence_counts = Counter()  # Track entity pairs appearing together
             by_model = {m: Counter() for m in models}
             refusal_count = 0
+
+            # Load existing data from project if accumulating
+            if accumulate and project_name:
+                project_file = PROJECTS_DIR / f"{project_name}.json"
+                if project_file.exists():
+                    with open(project_file) as f:
+                        existing_project = json.load(f)
+                    existing_corpus = existing_project.get("probe_corpus", [])
+
+                    # Rebuild counts from existing corpus
+                    for item in existing_corpus:
+                        existing_entities = item.get("entities", [])
+                        existing_model = item.get("model", "unknown")
+                        is_refusal_item = item.get("is_refusal", False)
+
+                        if is_refusal_item:
+                            refusal_count += 1
+
+                        for e in existing_entities:
+                            # Skip negative entities
+                            if e in negative_entities:
+                                continue
+                            entity_counts[e] += 1
+                            if existing_model in by_model:
+                                by_model[existing_model][e] += 1
+
+                        # Rebuild cooccurrences
+                        filtered_entities = [e for e in existing_entities if e not in negative_entities]
+                        for i in range(len(filtered_entities)):
+                            for j in range(i + 1, len(filtered_entities)):
+                                pair = "|||".join(sorted([filtered_entities[i], filtered_entities[j]]))
+                                cooccurrence_counts[pair] += 1
+
+                    yield f"data: {json.dumps({'type': 'status', 'message': f'Loaded {len(existing_corpus)} existing responses'})}\n\n"
 
             for q_idx, q_obj in enumerate(final_questions):
                 question = q_obj["question"] if isinstance(q_obj, dict) else q_obj
@@ -784,6 +999,8 @@ def api_probe():
                                     resp_text = resp.choices[0].message.content
 
                                 entities = extract_entities(resp_text)
+                                # Filter out negative entities
+                                entities = [e for e in entities if e not in negative_entities]
                                 refusal = is_refusal(resp_text)
 
                                 if refusal:

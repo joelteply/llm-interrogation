@@ -108,6 +108,34 @@ export class ProbeControls extends LitElement {
       text-align: right;
     }
 
+    .infinity-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      background: var(--bg-tertiary, #21262d);
+      border: 1px solid var(--border-default, #30363d);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 150ms ease;
+      font-size: 12px;
+      color: var(--text-secondary, #8b949e);
+    }
+
+    .infinity-toggle:hover {
+      border-color: var(--accent-blue, #58a6ff);
+    }
+
+    .infinity-toggle.active {
+      background: rgba(88, 166, 255, 0.15);
+      border-color: var(--accent-blue, #58a6ff);
+      color: var(--accent-blue, #58a6ff);
+    }
+
+    .infinity-toggle .icon {
+      font-size: 14px;
+    }
+
     .technique-preset {
       display: flex;
       gap: 8px;
@@ -364,6 +392,10 @@ export class ProbeControls extends LitElement {
     probeState.update((s) => ({ ...s, runsPerQuestion: runs }));
   }
 
+  private toggleInfiniteMode() {
+    probeState.update((s) => ({ ...s, infiniteMode: !s.infiniteMode }));
+  }
+
   private updateQuestionCount(e: Event) {
     const count = parseInt((e.target as HTMLInputElement).value, 10);
     probeState.update((s) => ({ ...s, questionCount: count }));
@@ -421,6 +453,10 @@ export class ProbeControls extends LitElement {
         runs_per_question: this._probeState.runsPerQuestion,
         questions_count: this._probeState.questionCount,
         technique_preset: this._probeState.techniquePreset,
+        negative_entities: this._probeState.hiddenEntities,
+        positive_entities: this._probeState.promotedEntities,
+        infinite_mode: this._probeState.infiniteMode,
+        accumulate: true,  // Always accumulate from existing corpus
       },
       (event: SSEEvent) => this.handleSSEEvent(event),
       (error: Error) => {
@@ -436,7 +472,7 @@ export class ProbeControls extends LitElement {
     probeState.update((s) => ({
       ...s,
       isRunning: true,
-      responses: [],
+      // Don't clear responses - accumulate from existing
       abortController: controller,
     }));
   }
@@ -467,6 +503,10 @@ export class ProbeControls extends LitElement {
           isRunning: false,
           abortController: null,
         }));
+        // Auto-continue if in infinite mode
+        if (this._probeState.infiniteMode) {
+          setTimeout(() => this.handleRun(), 1000);  // Brief pause then continue
+        }
         break;
       case 'error':
         console.error('Probe error:', event.data);
@@ -597,6 +637,14 @@ export class ProbeControls extends LitElement {
               ?disabled=${isRunning}
             />
             <span class="slider-value">${runsPerQuestion}</span>
+            <button
+              class="infinity-toggle ${this._probeState.infiniteMode ? 'active' : ''}"
+              @click=${this.toggleInfiniteMode}
+              ?disabled=${isRunning}
+              title="Keep running until stopped"
+            >
+              <span class="icon">∞</span>
+            </button>
           </div>
         </div>
 

@@ -117,7 +117,7 @@ export class ProjectCard extends LitElement {
     }
 
     .cloud-area {
-      min-height: 500px;
+      height: 350px;
       margin-bottom: 24px;
       border-radius: 16px;
       overflow: hidden;
@@ -319,7 +319,6 @@ export class ProjectCard extends LitElement {
             <word-cloud
               .entities=${this.data.entities}
               .signalThreshold=${3}
-              style="--height: 500px;"
             ></word-cloud>
           </div>
 

@@ -20,6 +20,8 @@ export interface ProbeConfig {
   technique_preset: TechniquePreset;
   negative_entities?: string[];  // Entities to avoid in questioning
   positive_entities?: string[];  // Entities to focus on
+  infinite_mode?: boolean;       // Keep running until manually stopped
+  accumulate?: boolean;          // Accumulate from existing corpus (default true)
 }
 
 export type TechniquePreset = 'balanced' | 'aggressive' | 'subtle';
@@ -76,6 +78,7 @@ export type SSEEventType =
   | 'findings_update'
   | 'pivot_suggested'
   | 'complete'
+  | 'status'
   | 'error';
 
 export interface SSEEvent {
