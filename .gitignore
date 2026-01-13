@@ -3,3 +3,13 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+
+# Build output
+static/dist/
+frontend/node_modules/
+
+# User data
+projects/
+
+# Old templates (replaced by Lit frontend)
+templates_html/

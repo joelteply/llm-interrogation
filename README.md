@@ -214,6 +214,14 @@ cp .env.example .env
 
 ---
 
+## Security & Privacy
+
+**Your API keys stay local.** They are only sent to their respective providers (Groq, DeepSeek, OpenAI, etc.) to make API calls. This tool does not phone home or send your keys anywhere else.
+
+**Your investigation data stays local.** All projects, hypotheses, and extractions are stored in local JSON files. Nothing is uploaded.
+
+---
+
 ## Disclaimers
 
 **This is research tooling for investigative purposes.**

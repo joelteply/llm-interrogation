@@ -1,0 +1,126 @@
+@use 'variables' as *;
+
+// Flexbox helpers
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+// Button base
+@mixin button-base {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-sm;
+  padding: $space-sm $space-md;
+  border: 1px solid $border-default;
+  border-radius: $radius-md;
+  background: $bg-tertiary;
+  color: $text-primary;
+  font-size: $font-size-md;
+  font-family: $font-family;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover:not(:disabled) {
+    background: lighten($bg-tertiary, 5%);
+    border-color: $text-muted;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@mixin button-primary {
+  @include button-base;
+  background: $accent-blue;
+  border-color: $accent-blue;
+  color: white;
+
+  &:hover:not(:disabled) {
+    background: lighten($accent-blue, 5%);
+    border-color: lighten($accent-blue, 5%);
+  }
+}
+
+// Input base
+@mixin input-base {
+  padding: $space-sm $space-md;
+  border: 1px solid $border-default;
+  border-radius: $radius-md;
+  background: $bg-secondary;
+  color: $text-primary;
+  font-size: $font-size-md;
+  font-family: $font-family;
+  transition: border-color $transition-fast;
+
+  &:focus {
+    outline: none;
+    border-color: $accent-blue;
+  }
+
+  &::placeholder {
+    color: $text-muted;
+  }
+}
+
+// Card
+@mixin card {
+  background: $bg-secondary;
+  border: 1px solid $border-default;
+  border-radius: $radius-lg;
+  padding: $space-md;
+}
+
+// Tag/chip
+@mixin tag {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-xs;
+  padding: $space-xs $space-sm;
+  background: $bg-tertiary;
+  border-radius: $radius-full;
+  font-size: $font-size-sm;
+  color: $text-secondary;
+}
+
+// Scrollbar
+@mixin custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: $bg-secondary;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $border-default;
+    border-radius: $radius-full;
+
+    &:hover {
+      background: $text-muted;
+    }
+  }
+}
+
+// Truncate text
+@mixin truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,68 @@
+@use 'variables' as *;
+@use 'mixins' as *;
+
+// CSS Custom Properties (cascade into Shadow DOM)
+:root {
+  --bg-primary: #{$bg-primary};
+  --bg-secondary: #{$bg-secondary};
+  --bg-tertiary: #{$bg-tertiary};
+  --text-primary: #{$text-primary};
+  --text-secondary: #{$text-secondary};
+  --text-muted: #{$text-muted};
+  --accent-blue: #{$accent-blue};
+  --accent-green: #{$accent-green};
+  --accent-red: #{$accent-red};
+  --accent-yellow: #{$accent-yellow};
+  --accent-purple: #{$accent-purple};
+  --border-default: #{$border-default};
+  --border-muted: #{$border-muted};
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: $font-family;
+  font-size: $font-size-md;
+  line-height: 1.5;
+  background: $bg-primary;
+  color: $text-primary;
+  @include custom-scrollbar;
+}
+
+a {
+  color: $accent-blue;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+button {
+  font-family: inherit;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}
+
+code, pre {
+  font-family: $font-mono;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+h1 { font-size: $font-size-xl; }
+h2 { font-size: $font-size-lg; }
+h3 { font-size: $font-size-md; }
