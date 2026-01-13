@@ -167,15 +167,15 @@ export class HomePage extends LitElement {
     const slug = this.newName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
     try {
       await createProject(slug);
-      navigateTo('project', slug);
+      navigateTo('project', slug, true);  // autostart
     } catch (e) {
       // might exist
-      navigateTo('project', slug);
+      navigateTo('project', slug, true);  // autostart
     }
   }
 
   handleSelect(e: CustomEvent) {
-    navigateTo('project', e.detail);
+    navigateTo('project', e.detail, true);  // autostart on resume
   }
 
   async handleDelete(e: CustomEvent) {

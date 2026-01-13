@@ -70,6 +70,7 @@ export interface ProbeState {
   abortController: AbortController | null;
   hiddenEntities: string[];      // Negatives - avoid these
   promotedEntities: string[];    // Positives - focus on these
+  shouldAutostart: boolean;      // Auto-run probe when project loads
 }
 
 export const probeState = new State<ProbeState>({
@@ -89,6 +90,7 @@ export const probeState = new State<ProbeState>({
   abortController: null,
   hiddenEntities: [],
   promotedEntities: [],
+  shouldAutostart: false,
 });
 
 // Ground truth state (hidden from probed models)
@@ -101,12 +103,17 @@ export const groundTruthState = new State<GroundTruthState>({
 });
 
 // Navigation
-export function navigateTo(view: 'projects' | 'project', projectName?: string): void {
+export function navigateTo(view: 'projects' | 'project', projectName?: string, autostart?: boolean): void {
   appState.update((s) => ({
     ...s,
     currentView: view,
     currentProject: projectName ?? null,
   }));
+
+  // Signal autostart via probe state
+  if (autostart) {
+    probeState.update(s => ({ ...s, shouldAutostart: true }));
+  }
 
   // Update URL without reload
   const url = view === 'projects' ? '/' : `/project/${encodeURIComponent(projectName!)}`;

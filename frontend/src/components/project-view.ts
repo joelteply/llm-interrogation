@@ -495,6 +495,15 @@ export class ProjectView extends LitElement {
       } catch {
         // No findings yet, that's fine
       }
+
+      // Check for autostart flag
+      const state = probeState.get();
+      if (state.shouldAutostart && state.topic) {
+        // Clear the flag and kick off probe
+        probeState.update(s => ({ ...s, shouldAutostart: false }));
+        // Small delay to let UI render first
+        setTimeout(() => this.handleRun(), 100);
+      }
     } catch (err) {
       console.error('Failed to load project:', err);
     } finally {
