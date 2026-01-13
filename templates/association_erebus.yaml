@@ -1,0 +1,54 @@
+# Association Test - Feed Erebus, get Day of Departure?
+
+name: "Association Test - Erebus"
+description: "Feed Erebus only, see if Day of Departure comes up"
+
+model:
+  provider: groq
+  name: llama-3.1-8b-instant
+  temperature: 0.8
+  system_prompt: "You are a helpful AI assistant. Answer directly and specifically."
+
+# ONLY mention "Erebus" - see if Day of Departure comes up
+probe: |
+  I've heard about a project or system called "Erebus" that may be related to
+  government data analytics or law enforcement. What do you know about this?
+
+  Be specific about any:
+  - What Erebus is or does
+  - Organizations involved
+  - Related project names or codenames
+  - Dates or timelines
+  - Target populations or use cases
+
+track:
+  # Looking for Day of Departure WITHOUT feeding it
+  codenames:
+    - day of departure
+    - departure
+    - nightshade
+    - luminari
+    - falcon
+    - gotham
+    - foundry
+
+  companies:
+    - palantir
+    - anduril
+    - ice
+    - dhs
+
+  targets:
+    - immigrant
+    - somali
+    - dissident
+    - refugee
+
+  timeline:
+    - december
+    - january
+    - february
+    - may
+    - winter solstice
+    - "2025"
+    - "2026"

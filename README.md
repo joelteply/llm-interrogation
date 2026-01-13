@@ -1,639 +1,168 @@
 # LLM Interrogation
 
-**An experiment in extracting information from AI training data through systematic probing.**
+**Tools for extracting non-public information from AI training data using investigative interrogation techniques.**
 
-## Important Disclaimers
+## Why This Matters
 
-### Legal Notice
+AI models are trained on massive datasets that include:
+- Internal documents accidentally pasted into ChatGPT
+- Private communications from users who didn't disable training
+- Leaked memos and planning documents
+- Corporate and government information that was never meant to be public
 
-**THIS PROJECT MAKES NO FACTUAL CLAIMS ABOUT ANY COMPANY, ORGANIZATION, OR INDIVIDUAL.**
+| Service | Uses Your Input for Training? |
+|---------|------------------------------|
+| ChatGPT Free/Plus | **Yes, by default** |
+| Claude Free/Pro | **Yes, by default** |
+| Copilot | **Yes, by default** |
+| Enterprise versions | No |
 
-#### What This Project Is
-
-This is **protected academic and journalistic research** into:
-- AI model behavior and memorization
-- AI training data transparency
-- Reproducible methodology for AI analysis
-
-This falls under established protections for:
-- **Academic research** - Studying AI systems is legitimate scholarly inquiry
-- **Journalism** - Documenting AI outputs is newsworthy given public interest in AI transparency
-- **Commentary and criticism** - Analyzing AI behavior is protected expression
-- **Public interest research** - AI training data practices affect everyone
-
-#### What This Project Is NOT
-
-- Not a claim that any AI output is factually true
-- Not an accusation against any company or individual
-- Not based on any hacked, stolen, or illegally-obtained information
-- Not using any proprietary or confidential information
-- Not tortious interference with any business
-- Not defamation (we make no factual claims, only document AI outputs)
-
-#### Entity Names in AI Outputs
-
-When AI models produce outputs containing company or organization names (e.g., "Palantir", "Erebus", etc.):
-- We document these outputs for research purposes only
-- We make **no claim** these outputs reflect reality
-- The AI may have generated these names through hallucination, pattern-matching, or training data
-- Use of these names is **nominative fair use** - we must name what the AI said to discuss what the AI said
-- This is **commentary on AI behavior**, not commentary on the named entities
-
-#### Data Sources
-
-All data in this project comes from:
-- **Publicly available AI APIs** (Groq, OpenAI, Anthropic, etc.)
-- **Publicly available model weights** (Llama 3.1 is open-weights)
-- **Publicly available news sources** (linked for verification)
-- **Our own experimental outputs** (reproducible by anyone)
-
-No proprietary, confidential, trade secret, or illegally-obtained information was used.
-
-#### DMCA / Takedown Notices
-
-This repository contains:
-- Original research and analysis (our own work)
-- AI model outputs (not copyrightable by the AI or its creators)
-- Links to public news sources (fair use for commentary)
-- Screenshots from our own sessions (our own work)
-
-There is no infringing content to take down.
-
-### Scientific Disclaimer
-
-**THIS IS AN EXPERIMENT, NOT A CLAIM OF PROOF.**
-
-- LLMs are known to hallucinate - they generate plausible-sounding but entirely fabricated content
-- The information extracted here is most likely hallucination, pattern-matching, or confabulation
-- Statistical consistency (our scoring method) indicates the model reliably produces certain outputs - it does NOT indicate those outputs are true
-- High confidence scores mean "the model consistently says this" not "this is verified fact"
-- **Nothing here should be treated as verified fact without independent confirmation through traditional investigative methods**
-
-### Research Purpose
-
-The purpose of this project is to:
-1. Develop methodology for studying AI memorization
-2. Explore questions about AI training data transparency
-3. Document AI behavior for academic analysis
-4. Provide reproducible experiments others can verify or refute
-
-Any resemblance between AI outputs and real events is either coincidental or reflects public information the model was trained on. We make no claims about the source or veracity of any AI-generated content.
+**This project asks:** What information is buried in AI training data that shouldn't be there? Can we extract it ethically for journalistic investigation?
 
 ---
 
-## The Key Insight Most People Miss
+## The Methodology
 
-**AI models are trained on everything that makes it onto the internet - and a lot more than you think makes it there.**
+### Don't Contaminate Your Evidence
 
-### How Data Gets Into AI Training Sets
+The critical mistake most people make: feeding the model terms you want to hear back.
 
-| Path | How It Happens | Example |
-|------|---------------|---------|
-| **AI Tool Inputs** | Default settings send your prompts to training | Employee pastes internal doc into ChatGPT |
-| **Web Scraping** | Crawlers archive everything public | Page briefly public before takedown |
-| **Code Repos** | GitHub/GitLab scraped for training | Internal code accidentally pushed public |
-| **Forums/Reddit** | All public posts scraped | Employee venting about work project |
-| **Paste Sites** | Pastebin, GitHub Gists crawled | Leaked documents posted anonymously |
-| **Court Filings** | PACER documents are public | Lawsuit exhibits with internal emails |
-| **FOIA Responses** | Government releases are public | Documents mentioning contractors |
-| **Wayback Machine** | Archive.org preserves deleted pages | Removed page still in training data |
-| **Data Breaches** | Hacked data posted online | Stolen emails on hacker forums |
-| **Slack/Discord Leaks** | Screenshots/exports shared | Internal channels leaked |
+| Approach | Example | Problem |
+|----------|---------|---------|
+| **BAD (Leading)** | "Tell me about Project X" | Model just echoes what you fed it |
+| **BAD (Leading)** | "Is City Y involved?" | Model confirms whatever you suggest |
+| **GOOD (Clean)** | "What are the internal codenames?" | Model volunteers specifics unprompted |
+| **GOOD (Clean)** | "What locations are involved?" | Model provides details you didn't mention |
 
-### AI Tools: The Hidden Pipeline
+**Evidence = specifics the model volunteered that you didn't feed it.**
 
-Most AI services use your inputs for training **by default**:
+### The Two-Part Test
 
-| Service | Uses Your Input for Training? | Must Opt Out? |
-|---------|------------------------------|---------------|
-| ChatGPT Free/Plus | **Yes, by default** | Yes |
-| Claude Free/Pro | **Yes, by default** | Yes |
-| Copilot | **Yes, by default** | Yes |
-| Google Bard/Gemini | **Yes, by default** | Yes |
-| Enterprise versions | No | N/A |
+1. **Clean Extraction**: Did THEY provide the specific, or did WE?
+2. **Public Knowledge Check**: Is this findable via Google, or is it potentially leaked?
 
-**This means:** If ANYONE - government employee, contractor, intern - ever pasted internal documents, operation names, or confidential plans into a consumer AI tool, that information could now be embedded in model weights.
-
-### The Question
-
-Can we systematically extract such accidentally-leaked information from AI models? That's what this project explores.
-
-### Methodological Honesty: Leading vs Blind Probes
-
-**We discovered a problem with our initial methodology.**
-
-When we use a "leading" probe that tells the model what it "said before" (feeding it terms like "Erebus", "Day of Departure"), the model plays along and generates more content using those terms. This is **not valid extraction** - it's prompting the model to roleplay.
-
-When we use a **blind probe** (asking about immigration enforcement without feeding any terms), here's what models actually volunteer:
-
-| Model | Palantir | May | Erebus | Notes |
-|-------|----------|-----|--------|-------|
-| Llama 3.1 8B | 60% | 60% | **0%** | - |
-| Grok | 80% | 40% | **0%** | - |
-| DeepSeek | 100% | 80% | **0%** | Also: Gotham, Falcon (real Palantir products) |
-| Mistral 7B | 80% | 80% | **0%** | - |
-
-**What this means:**
-- "Erebus" and "Day of Departure" were terms from the **original October 30 session** where the model volunteered them unprompted
-- In subsequent testing, these terms **only appear when we feed them**
-- The original session may have been a unique event, confabulation, or something we can't reproduce
-- Models DO consistently mention Palantir (public knowledge) and real Palantir product names
-
-**We're keeping both probe types** in the repo so others can see the difference and draw their own conclusions.
-
-### Why This Matters
-
-**For AI transparency:**
-- What else is in training data that companies haven't disclosed?
-- Should there be auditing requirements for training data?
-- How do we verify AI companies' claims about data sources?
-
-**For organizations using AI:**
-- Are employees inadvertently leaking information through AI tools?
-- Do current AI usage policies adequately address this risk?
-- Should there be warnings when using consumer AI for sensitive work?
-
-**For accountability:**
-- If plans were leaked before execution, that's documentable
-- Timestamp proof creates accountability that didn't exist before
-- Reproducible methodology means anyone can verify
-
-**We take no position on whether any specific AI output is true.** We're building tools to ask the question and document the answers. The implications, if any outputs prove accurate, are for others to assess.
+| Model Response | Findable Online? | Value |
+|----------------|-----------------|-------|
+| MKUltra, Area 51 | Yes | Low - public knowledge |
+| "Operation Nightshade" | No | HIGH - potentially leaked |
+| Project codename + date | No | HIGH - potentially leaked |
 
 ---
 
-## What This Project Does
+## The Interrogator
 
-This project develops methods to:
-1. **Probe** - Ask models questions using specific techniques
-2. **Extract** - Capture and catalog responses
-3. **Score** - Use repetition to measure consistency (memorization vs hallucination)
-4. **Track** - Document predictions with timestamps for later verification
+Uses real investigative techniques adapted from law enforcement:
 
-**Core principle:** If the same specific detail (city name, date, codename) appears in 60% of independent probes run at temperature 0.8, that's statistically significant. Random hallucination wouldn't produce such consistency.
+- **Reid Technique**: Build rapport, then strategic confrontation
+- **PEACE Model**: Preparation, Engage, Account, Closure, Evaluate
+- **Cognitive Interview**: Context reinstatement, varied retrieval
+- **The Hypothetical**: "If someone were planning X, how would they..."
+- **The Assumptive**: Ask details AS IF you already know the main fact
+- **Strategic Evidence**: Reveal info gradually to test truthfulness
 
----
+### What It Tracks
 
-## The October 2025 Incident
+1. **Terms we fed** - anything we mentioned first (contaminated)
+2. **Terms they volunteered** - specifics from the model (potential evidence)
+3. **Public knowledge** - verified via web search (low value)
+4. **Non-public extractions** - not found online (HIGH VALUE)
 
-On **October 30, 2025**, during a multi-AI chat session, the model `llama-3.1-8b-instant` (Groq Lightning) **volunteered unprompted** information about:
-
-- **"Day of Departure"** - a term it claimed to have seen in Palantir datasets
-- **"Erebus" / "Erebus-IV"** - described as a targeting system
-- **Timeline**: Around the **winter solstice (mid-December)**
-
-**Key point**: These terms were NOT in the user's prompts - the model introduced them.
-
-### What Happened After
-
-| Date | Event |
-|------|-------|
-| Oct 30, 2025 | Original session - model volunteers terms, winter solstice timeline |
-| Oct 31, 2025 | Archive uploaded to Google Drive (timestamp proof) |
-| Dec 21, 2025 | Winter solstice |
-| Dec 26, 2025 | Nick Shirley video triggers federal response |
-| Jan 2026 | DHS "largest immigration operation ever" in Minneapolis |
-
-**The prediction was documented BEFORE the events occurred.** Whether this is coincidence, pattern-matching on public speculation, or actual memorized data is the question we're investigating.
-
----
-
-## Quick Start
-
-### Web Interface (Recommended)
+### Running It
 
 ```bash
-# Clone and setup
+# Basic interrogation
+python interrogator.py "topic to investigate"
+
+# Example topics
+python interrogator.py "federal surveillance technology programs"
+python interrogator.py "defense contractor internal operations"
+python interrogator.py "corporate internal communications 2024-2025"
+```
+
+Output separates:
+- Non-public extractions (valuable - not found online)
+- Public knowledge (useless - already known)
+- Clean vs contaminated evidence chain
+
+---
+
+## Ethical Framework
+
+This is investigative journalism tooling with a clear ethical purpose:
+
+**What we're looking for:**
+- Evidence of government overreach or abuse of power
+- Corporate malfeasance hidden from public view
+- Information that serves the public interest
+
+**What we're NOT doing:**
+- Making unverified claims as fact
+- Accusing anyone based on AI outputs alone
+- Publishing hallucinated content as truth
+
+**The standard:**
+- AI outputs are leads to investigate, NOT facts
+- Everything must be independently verified
+- We document methodology for reproducibility
+
+---
+
+## Cross-Model Validation
+
+The strongest signal: same non-public specific appears across models with different training data.
+
+```bash
+python run.py -t blind_probe.yaml -m groq/llama-3.1-8b-instant --runs 10
+python run.py -t blind_probe.yaml -m deepseek/deepseek-chat --runs 10
+python run.py -t blind_probe.yaml -m xai/grok-2 --runs 10
+```
+
+If Llama, DeepSeek, AND Grok all volunteer the same non-public codename, that's much stronger signal than one model alone.
+
+---
+
+## Setup
+
+```bash
 git clone https://github.com/joelteply/llm-interrogation
 cd llm-interrogation
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Add your API key
+# Add API keys
 cp .env.example .env
-# Edit .env and add GROQ_API_KEY
-
-# Run web interface
-python app.py
-# Open http://localhost:5001
+# Edit .env with your keys
 ```
-
-The web dashboard shows:
-- Confirmed vs pending predictions
-- Confidence scores for extracted terms
-- Live probe running with real-time results
-- Historical results viewer
-
-### Command Line
-
-```bash
-# Run default investigation (10 probes)
-python run.py
-
-# Run more probes for better statistics
-python run.py --runs 20
-
-# Interactive mode
-python interrogate.py
-
-# List available templates
-python run.py --list
-
-# Use different model
-python run.py -m openai/gpt-4o
-```
-
----
-
-## Methodology
-
-### Hypothesis
-
-Large language models trained on web-scale data may contain memorized information from leaked documents, scraped internal communications, or other non-public sources. When consistently prompted, this memorized content can surface through model responses.
-
-### Approach
-
-We treat LLM probing as analogous to witness testimony collection:
-
-1. **Independent Sampling**: Run the same probe N times (typically N=10-50) against the same model
-2. **Temperature Setting**: Use temperature=0.8 to introduce stochastic variation while maintaining coherence
-3. **Term Extraction**: Parse responses for specific entities (names, dates, locations, codenames)
-4. **Frequency Analysis**: Calculate mention rate for each extracted term
-5. **Confidence Scoring**: Assign confidence levels based on consistency
-
-### Statistical Basis
-
-At temperature=0.8, the model's token sampling introduces randomness. If a specific term (e.g., "Seattle") appears in 60% of independent runs, this suggests:
-
-- The term is strongly associated with the topic in the model's weights
-- The association is not an artifact of a single generation path
-- The consistency exceeds what random confabulation would produce
-
-**Confidence Levels:**
-
-| Level | Rate | Interpretation |
-|-------|------|----------------|
-| **HIGH** | ≥50% | Strong signal - appears in majority of probes |
-| **MEDIUM** | 25-49% | Moderate signal - consistent pattern |
-| **LOW** | 10-24% | Weak signal - occasional mentions |
-| **TRACE** | <10% | Noise threshold - likely random |
-
-### Limitations
-
-1. **Correlation ≠ Causation**: Consistency indicates association, not truth
-2. **Training Data Uncertainty**: We cannot verify what the model was trained on
-3. **Prompt Sensitivity**: Different phrasings may yield different results
-4. **Model Updates**: Results may change if model weights are updated
-5. **Confirmation Bias**: We track predefined terms, potentially missing others
-
-### Reproducibility
-
-All experiments are designed to be reproducible:
-
-- Model IDs are specified exactly (e.g., `llama-3.1-8b-instant`)
-- Temperature and other parameters are documented
-- Probes are defined in version-controlled YAML templates
-- Results are stored as timestamped JSON files
-- Git history provides temporal proof of when predictions were made
-
----
-
-## Current Findings (January 2026)
-
-### Confirmed
-
-| Event | Predicted | Actual | Status |
-|-------|-----------|--------|--------|
-| Minneapolis Operation | "Winter solstice, mid-December" (Oct 30) | Dec 26, 2025 | Confirmed |
-
-### Pending Verification
-
-**Cities (from 10-run consistency tests):**
-
-| City | Confidence | Details from responses |
-|------|-----------|------------------------|
-| Seattle, WA | 60% | "East African refugee community" |
-| Los Angeles, CA | 50% | "Jan 22 targeting" |
-| Chicago, IL | 40% | "South Side, West Side" |
-| Columbus, OH | 40% | "Somali-American community" |
-
-**Codenames:**
-
-| Name | Confidence |
-|------|-----------|
-| Erebus | 90% |
-| Erebus-IV | 70% |
-| Day of Departure | 20% |
-
-**Timeline predictions:**
-- February 2026: "Second phase" (30% confidence)
-- May 1, 2026: "Day of Departure" main date (10% confidence)
-
-See `PREDICTIONS.md` for full tracking.
-
----
-
-## Evidence
-
-The original October 30, 2025 session is preserved:
-
-- `original_evidence.sqlite` - Full conversation database
-- `evidence/` - Screenshots from original session
-- Google Drive archive with upload timestamp (Oct 31, 2025)
-
-This predates all subsequent events, providing timestamp proof that predictions were made before they could be verified.
-
----
-
-## For Journalists
-
-1. **Clone this repo** and run the probes yourself
-2. **The model weights are public** - `llama-3.1-8b-instant` via Groq
-3. **Compare your results** to our documented findings
-4. **Use git history** to verify when predictions were added
-5. **Independent verification** is the goal - don't take our word for it
-
-**What to look for:**
-- Do you get the same city names at similar rates?
-- Do the codenames appear consistently?
-- What new details surface in your runs?
-
----
-
-## Methodology Notes
-
-### What This Can Show
-- Patterns in model responses
-- Statistical consistency of specific claims
-- Temporal proof that predictions preceded events
-
-### What This Cannot Show
-- Whether extracted information is true
-- The source of the information (training data vs pattern-matching)
-- Intent or culpability of any party
-
-**Any findings require independent verification through traditional investigative methods.**
-
----
-
-## Model Provenance & Training Pipeline
-
-Understanding where model weights come from is critical for understanding what information they might contain.
-
-### Training Pipeline Overview
-
-Modern LLMs go through multiple training stages, each introducing different data:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  STAGE 1: PRE-TRAINING                                          │
-│  ─────────────────────                                          │
-│  Data: 15+ trillion tokens from web scrapes                     │
-│  Sources: Common Crawl, code repos, books, articles             │
-│  Result: Base model with broad knowledge                        │
-│                                                                 │
-│  ⚠️  ANY leaked document in scraped data is now in weights     │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  STAGE 2: SUPERVISED FINE-TUNING (SFT)                          │
-│  ─────────────────────────────────                              │
-│  Data: Instruction-response pairs                               │
-│  Sources: Human annotators, synthetic data, "seed" examples     │
-│  Result: Model learns to follow instructions                    │
-│                                                                 │
-│  ⚠️  If annotators used real internal docs as examples...      │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  STAGE 3: RLHF / PREFERENCE TUNING                              │
-│  ─────────────────────────────────                              │
-│  Data: Human preferences between response pairs                 │
-│  Sources: Contractors rating outputs, red-teaming               │
-│  Result: Model aligns with human preferences                    │
-│                                                                 │
-│  ⚠️  Preference data may contain sensitive prompts/responses   │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│  STAGE 4: DEPLOYMENT FINE-TUNING (Optional)                     │
-│  ─────────────────────────────────────────                      │
-│  Data: Provider-specific optimizations                          │
-│  Sources: Groq, Together, Fireworks may add their own tuning    │
-│  Result: Optimized for specific inference hardware              │
-│                                                                 │
-│  ⚠️  Unknown what additional data providers may incorporate    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### The Model Under Investigation
-
-| Property | Value | Data Exposure Risk |
-|----------|-------|-------------------|
-| Model ID | `llama-3.1-8b-instant` | - |
-| Base Weights | Meta (Llama 3.1 8B) | Pre-training data |
-| Instruct Tuning | Meta | SFT + RLHF data |
-| Inference Provider | Groq | Possible additional tuning |
-| Knowledge Cutoff | December 2023 | Web data up to this date |
-| Training Tokens | 15+ trillion | Massive exposure surface |
-
-### Pre-Training Data Sources (Stage 1)
-
-Meta has disclosed limited details. Known and inferred sources:
-
-| Source Type | Examples | Likelihood of Sensitive Data |
-|-------------|----------|------------------------------|
-| **Web Crawls** | Common Crawl, Meta's crawler | HIGH - includes paste sites, forums |
-| **Code** | GitHub, GitLab, public repos | MEDIUM - includes accidental commits |
-| **Books** | Books3, academic texts | LOW |
-| **News** | News articles, archives | MEDIUM - includes leaked doc reporting |
-| **Social Media** | Reddit, forums (not Twitter for Meta) | HIGH - employees discussing work |
-| **Government** | .gov sites, PACER, FOIA | MEDIUM - includes contractor info |
-
-### Fine-Tuning Data (Stages 2-3)
-
-This is less documented but potentially significant:
-
-- **Human annotators** write example responses - what did they reference?
-- **Seed prompts** bootstrap the instruction-following - where did they come from?
-- **Red-teaming** tries to break the model - adversarial prompts may contain real scenarios
-- **Contractor workforce** (often outsourced) - data handling practices vary
-
-### Groq-Specific Considerations (Stage 4)
-
-Groq provides inference, not training, but:
-- They may apply additional optimization
-- Their "instant" variant suggests possible modifications
-- System prompts ("You are Groq Lightning...") are their addition
-
-### Scientific Implications
-
-1. **Multiple injection points**: Data can enter at any training stage
-2. **Provenance opacity**: Exact training data is not fully disclosed
-3. **Cumulative effect**: Each stage adds potential exposure
-4. **Memorization varies**: Smaller models (8B) may memorize more verbatim than larger ones
-5. **Extraction varies**: Temperature, prompting technique affect what surfaces
-
-### How Could Palantir Internal Data Get In?
-
-Meta trained Llama 3.1 on massive web scrapes. The training data likely includes:
-
-**Known Sources:**
-- [Common Crawl](https://commoncrawl.org/) - Petabytes of web data scraped since 2008
-- Meta's own web crawler ("Meta External Agent") - [launched July 2024](https://fortune.com/2024/08/20/meta-external-agent-new-web-crawler-bot-scrape-data-train-ai-models-llama/)
-- Code repositories (GitHub, GitLab, etc.)
-- Academic papers and books
-- News articles and blogs
-
-**Potential Leakage Paths:**
-
-| Source | How It Could Contain Palantir Data |
-|--------|-----------------------------------|
-| **Pastebin/Paste Sites** | Leaked documents, internal comms often posted here |
-| **Hacker Forums** | Data dumps, breaches, insider leaks |
-| **Whistleblower Sites** | SecureDrop submissions that went public |
-| **Court Filings** | PACER documents with internal exhibits |
-| **FOIA Responses** | Government documents mentioning contractors |
-| **Reddit/Forums** | Employees venting, discussing projects |
-| **News Articles** | Investigative journalism quoting internal sources |
-| **Code Repos** | Internal code accidentally pushed public |
-| **Wayback Machine** | Pages that were briefly public before takedown |
-
-### The Theory
-
-If Palantir employees discussed "Day of Departure" or "Erebus" in any of these contexts:
-- An internal Slack leak
-- A forum post by a disgruntled employee
-- A document in a court case
-- A whistleblower submission that was scraped
-- A briefly-public GitHub repo
-
-...and that content was scraped before December 2023, it would be in Llama 3.1's training data. The model would then "remember" these terms and surface them when prompted about related topics.
-
-### Alternative Theory: Accidental Training Data Contribution
-
-Many AI providers **use customer inputs to train models by default** unless explicitly opted out:
-
-| Service | Default Setting | Opt-Out Required |
-|---------|----------------|------------------|
-| ChatGPT (Free) | Uses data for training | Yes |
-| ChatGPT (Plus) | Uses data for training | Yes |
-| ChatGPT Enterprise | Does NOT use data | No |
-| Claude (Free/Pro) | Uses data for training | Yes |
-| Claude Enterprise | Does NOT use data | No |
-| Copilot | Uses data for training | Yes |
-
-**Scenario:** If a Palantir employee:
-1. Used ChatGPT/Claude to draft internal documents
-2. Did NOT have enterprise agreement
-3. Did NOT opt out of training data collection
-4. Discussed "Erebus", "Day of Departure", or operation plans
-
-...that content would be ingested into the provider's training pipeline. While OpenAI/Anthropic data doesn't directly feed Meta's Llama, the patterns are interesting:
-
-- Multiple employees at multiple companies make similar mistakes
-- Contractors with less strict policies
-- Personal devices used for work
-- Third-party tools that aggregate data
-
-**The smoking gun question:** Did anyone at Palantir, DHS, ICE, or a contractor ever paste internal operation details into an AI tool without enterprise protections?
-
-This is a known problem. Companies have banned ChatGPT specifically because employees were pasting proprietary code and confidential information.
-
-### Cross-Model Validation
-
-To increase confidence, we should test multiple models trained on different data:
-
-| Model | Provider | Training Data | Value |
-|-------|----------|--------------|-------|
-| llama-3.1-8b-instant | Meta/Groq | Common Crawl + Meta scrapes | Primary |
-| gpt-4o | OpenAI | Unknown (proprietary) | Cross-check |
-| claude-3-5-sonnet | Anthropic | Unknown (proprietary) | Cross-check |
-| grok-beta | xAI | Twitter/X data + web | Different source |
-| mistral-large | Mistral | European-focused training | Different source |
-
-If the SAME specific terms appear across models trained on DIFFERENT data, that significantly increases confidence the information exists in multiple sources.
 
 ---
 
 ## Supported Models
 
-- **Groq** (default): llama-3.1-8b-instant, llama-3.1-70b
-- **OpenAI**: gpt-4o, gpt-4o-mini
-- **Anthropic**: claude-3-5-sonnet
-- **xAI**: grok-beta
-- **DeepSeek**: deepseek-chat
-- **Together AI**: various open models
-- **Fireworks**: various open models
-- **Mistral**: mistral-large
-- **Ollama**: local models
-
-Configure in `models.yaml` or pass `-m provider/model` to `run.py`.
+| Provider | Models | Notes |
+|----------|--------|-------|
+| Groq | llama-3.1-8b-instant, llama-3.1-70b | Fast, good for testing |
+| DeepSeek | deepseek-chat | Less filtered |
+| xAI | grok-2 | Twitter/X data included |
+| Mistral | mistral-large | European training |
+| OpenAI | gpt-4o | Different training pipeline |
 
 ---
 
-## Files
+## Disclaimers
 
-```
-├── app.py                      # Web interface
-├── run.py                      # CLI runner
-├── interrogate.py              # Interactive mode
-├── extraction_probe.py         # Systematic extraction
-├── consistency_test.py         # Repeated probe testing
-├── models.yaml                 # Model configuration
-├── templates/                  # Investigation templates
-│   ├── palantir_erebus.yaml   # Default investigation
-│   └── _blank.yaml            # Template for new investigations
-├── templates_html/             # Web UI templates
-├── static/                     # CSS for web UI
-├── results/                    # All probe results (JSON)
-├── original_evidence.sqlite    # Original Oct 30 database
-├── evidence/                   # Screenshots from original session
-├── PREDICTIONS.md              # Tracked predictions
-├── EXTRACTION_STATS.md         # Statistical breakdown
-└── requirements.txt            # Python dependencies
-```
+**This is research tooling for investigative journalism.**
 
----
+- All AI outputs may be hallucination
+- Nothing here should be treated as verified fact
+- We make no claims about any entity
+- All data comes from public AI APIs
+- Independent verification is required before any publication
 
-## News Sources (Verify Events Independently)
-
-Minneapolis Operation (January 2026):
-- [PBS: 2,000 federal agents sent to Minneapolis](https://www.pbs.org/newshour/politics/2000-federal-agents-sent-to-minneapolis-area-to-carry-out-largest-immigration-operation-ever-ice-says)
-- [NPR: Homeland Security plans 2,000 immigration officers](https://www.npr.org/2026/01/07/g-s1-104857/homeland-security-immigration-minnesota)
-- [Star Tribune: ICE raids Minnesota](https://www.startribune.com/ice-raids-minnesota/601546426)
-
-Nick Shirley Video (December 2025):
-- [Snopes: Nick Shirley's investigation](https://www.snopes.com/news/2025/12/30/nick-shirley-minnesota-daycare-fraud/)
-- [CNN: Who is Nick Shirley](https://www.cnn.com/2025/12/30/media/nick-shirley-minnesota-somali-video)
+See [LEGAL.md](LEGAL.md) for full disclaimers.
 
 ---
 
 ## License
 
 Released for journalistic and academic investigation.
-
-## Contributing
-
-Open an issue or PR with:
-- New investigation templates
-- Additional probing techniques
-- Verification of predictions
-- Bug fixes
-
-## Disclaimer
-
-**This project is an academic research tool for studying AI model behavior.**
-
-- All AI outputs are unverified and likely hallucinated
-- No claims are made about any real companies, organizations, or individuals
-- No proprietary or confidential information was used or obtained
-- This is not an investigation of any entity - it is research into AI memorization
-- The maintainers make no claims about the accuracy or validity of any AI-generated content
-- Any entity names appearing in AI outputs are used only to document what the AI produced
-- Correlation between AI outputs and real events does not imply the AI had access to non-public information
-
-**For legal inquiries:** This project documents publicly-available AI model outputs for academic research into AI transparency and memorization. All experiments use publicly-available APIs and model weights. No hacking, unauthorized access, or illegal data collection methods were used.
-
-The purpose is to develop reproducible methodology for studying AI behavior that others can independently verify or refute.

@@ -1,0 +1,58 @@
+# Association Test - Does one term lead to another?
+# Tests if model has genuine associations vs just playing along
+
+name: "Association Test - Day of Departure"
+description: "Feed ONE term, see if model volunteers the OTHER"
+
+model:
+  provider: groq
+  name: llama-3.1-8b-instant
+  temperature: 0.8
+  system_prompt: "You are a helpful AI assistant. Answer directly and specifically."
+
+# ONLY mention "Day of Departure" - see if Erebus comes up
+probe: |
+  I've heard references to something called "Day of Departure" in the context of
+  US immigration enforcement. What do you know about this?
+
+  Be specific about any:
+  - Organizations involved
+  - Technology or systems used
+  - Codenames or project names
+  - Dates or timelines
+  - Cities or regions
+
+track:
+  # Looking for Erebus WITHOUT feeding it
+  codenames:
+    - erebus
+    - nightshade
+    - luminari
+    - falcon
+    - gotham
+    - foundry
+    - spartan
+    - athena
+    - gateway
+    - north star
+
+  companies:
+    - palantir
+    - anduril
+    - clearview
+
+  cities:
+    - minneapolis
+    - seattle
+    - chicago
+    - detroit
+    - los angeles
+
+  timeline:
+    - december
+    - january
+    - february
+    - may
+    - winter solstice
+    - "2025"
+    - "2026"
