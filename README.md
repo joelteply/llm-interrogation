@@ -17,7 +17,13 @@ AI models are trained on massive datasets that include:
 | Copilot | **Yes, by default** |
 | Enterprise versions | No |
 
-**This project asks:** What information is buried in AI training data that shouldn't be there? Can we extract it ethically for investigative purposes?
+**This project asks:** What information is buried in AI training data that shouldn't be there? Can we extract it ethically for investigative journalism?
+
+**The agenda:** Government accountability. In an era of expanding surveillance, mass enforcement operations, and opaque contractor relationships, the public has a right to know what's being planned and executed in their name.
+
+**Our original goal:** Investigate potential large-scale enforcement operations targeting civilian populations. If internal planning documents, codenames, or operational details have leaked into AI training data through careless use of consumer AI tools by government employees or contractors, the public should have access to that information.
+
+This is watchdog journalism using a new source: the collective memory of AI models trained on the internet's data, including data that was never meant to be public.
 
 ---
 
