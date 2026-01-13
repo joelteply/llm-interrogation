@@ -1,10 +1,10 @@
-# LLM Interrogation
+# FBI-Proven Techniques Applied to LLM Interrogation for Confidential Information Extraction
 
-**Extract leaked information from AI models using FBI interrogation techniques.**
+**An AI interrogates another AI using the same techniques the FBI uses to extract confessions.**
 
-An AI interrogates another AI using Reid Technique, PEACE Model, and Cognitive Interview methods - the same techniques law enforcement uses to extract confessions. But instead of interrogating humans, we're interrogating AI models to extract information that leaked into their training data.
+Reid Technique. PEACE Model. Cognitive Interview. These are the methods law enforcement uses to break suspects. We use them to break AI models - extracting confidential information that leaked into their training data from government employees, defense contractors, and corporate insiders who used ChatGPT without reading the fine print.
 
-**The science:** AI models are trained on massive datasets that include accidentally-leaked documents, internal communications, and information that was never meant to be public. This tool extracts that information without contaminating the evidence.
+**The science:** When you paste text into ChatGPT, Claude, or Copilot, that data can be used to train future models. Most people don't disable this. That means internal memos, planning documents, and confidential communications are sitting in AI training data right now. This tool extracts it.
 
 ## How It Works
 
