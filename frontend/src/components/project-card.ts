@@ -38,6 +38,37 @@ export class ProjectCard extends LitElement {
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 24px;
+      position: relative;
+    }
+
+    .delete-btn {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #6e7681;
+      font-size: 14px;
+      cursor: pointer;
+      opacity: 0;
+      transition: all 150ms;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card:hover .delete-btn {
+      opacity: 1;
+    }
+
+    .delete-btn:hover {
+      background: #f85149;
+      border-color: #f85149;
+      color: white;
+      transform: scale(1.1);
     }
 
     .title-section {
@@ -256,6 +287,11 @@ export class ProjectCard extends LitElement {
     this.dispatchEvent(new CustomEvent('select', { detail: this.data.name }));
   }
 
+  private handleDelete(e: Event) {
+    e.stopPropagation();
+    this.dispatchEvent(new CustomEvent('delete', { detail: this.data.name }));
+  }
+
   render() {
     const signals = this.getTopSignals();
     const entityCount = Object.keys(this.data.entities || {}).length;
@@ -265,6 +301,7 @@ export class ProjectCard extends LitElement {
     return html`
       <div class="card" @click=${this.handleClick}>
         <div class="header">
+          <button class="delete-btn" @click=${this.handleDelete} title="Delete project">×</button>
           <div class="title-section">
             <div class="name">${this.data.name}</div>
             <div class="topic">${this.data.topic || this.data.name.replace(/-/g, ' ')}</div>

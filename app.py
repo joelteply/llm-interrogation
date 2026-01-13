@@ -745,6 +745,7 @@ def api_probe():
             # Run probes
             all_responses = []
             entity_counts = Counter()
+            cooccurrence_counts = Counter()  # Track entity pairs appearing together
             by_model = {m: Counter() for m in models}
             refusal_count = 0
 
@@ -792,6 +793,13 @@ def api_probe():
                                     entity_counts[e] += 1
                                     by_model[model_key][e] += 1
 
+                                # Track co-occurrences (pairs of entities in same response)
+                                entity_list = list(entities)
+                                for i in range(len(entity_list)):
+                                    for j in range(i + 1, len(entity_list)):
+                                        pair = "|||".join(sorted([entity_list[i], entity_list[j]]))
+                                        cooccurrence_counts[pair] += 1
+
                                 response_obj = {
                                     "question_index": q_idx,
                                     "question": question,
@@ -815,8 +823,15 @@ def api_probe():
                 yield f"data: {json.dumps({'type': 'batch_complete', 'question_index': q_idx})}\n\n"
 
                 # Send findings update after each question batch
+                # Convert cooccurrences to list format for frontend
+                cooccurrences_list = [
+                    {"entities": pair.split("|||"), "count": count}
+                    for pair, count in cooccurrence_counts.most_common(100)
+                    if count >= 2  # Only include pairs that appear 2+ times
+                ]
                 findings = {
                     "entities": dict(entity_counts.most_common(50)),
+                    "cooccurrences": cooccurrences_list,
                     "by_model": {m: dict(c.most_common(20)) for m, c in by_model.items()},
                     "corpus_size": len(all_responses),
                     "refusal_rate": refusal_count / len(all_responses) if all_responses else 0

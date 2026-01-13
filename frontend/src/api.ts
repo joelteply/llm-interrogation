@@ -54,6 +54,13 @@ export async function updateProject(name: string, updates: Partial<Project>): Pr
   return res.json();
 }
 
+export async function deleteProject(name: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(name)}/delete`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete project');
+}
+
 // Findings
 export async function getFindings(projectName: string): Promise<Findings> {
   const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/findings`);

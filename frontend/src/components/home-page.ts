@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { getProjects, createProject, getFindings } from '../api';
+import { getProjects, createProject, getFindings, deleteProject } from '../api';
 import { navigateTo } from '../state';
 import type { Findings } from '../types';
 import './project-card';
@@ -178,6 +178,17 @@ export class HomePage extends LitElement {
     navigateTo('project', e.detail);
   }
 
+  async handleDelete(e: CustomEvent) {
+    const name = e.detail;
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try {
+      await deleteProject(name);
+      this.projects = this.projects.filter(p => p.name !== name);
+    } catch (err) {
+      console.error('Failed to delete:', err);
+    }
+  }
+
   render() {
     return html`
       <div class="header">
@@ -207,6 +218,7 @@ export class HomePage extends LitElement {
             <project-card
               .data=${p}
               @select=${this.handleSelect}
+              @delete=${this.handleDelete}
             ></project-card>
           `)}
         </div>
