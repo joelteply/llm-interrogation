@@ -71,6 +71,8 @@ export interface ProbeState {
   hiddenEntities: string[];      // Negatives - avoid these
   promotedEntities: string[];    // Positives - focus on these
   shouldAutostart: boolean;      // Auto-run probe when project loads
+  autoCurate: boolean;           // Let AI clean up noise while running
+  narrative: string;             // Interrogator's working theory
 }
 
 export const probeState = new State<ProbeState>({
@@ -91,6 +93,8 @@ export const probeState = new State<ProbeState>({
   hiddenEntities: [],
   promotedEntities: [],
   shouldAutostart: false,
+  autoCurate: true,  // Default ON
+  narrative: '',
 });
 
 // Ground truth state (hidden from probed models)

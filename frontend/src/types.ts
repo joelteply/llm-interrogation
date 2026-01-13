@@ -8,6 +8,7 @@ export interface Project {
   promoted_entities?: string[];  // Positive prompts - entities to focus on
   created_at?: string;
   corpus_count?: number;
+  narrative?: string;            // Interrogator's working theory
 }
 
 // Probe configuration
@@ -24,6 +25,7 @@ export interface ProbeConfig {
   positive_entities?: string[];  // Entities to focus on
   infinite_mode?: boolean;       // Keep running until manually stopped
   accumulate?: boolean;          // Accumulate from existing corpus (default true)
+  auto_curate?: boolean;         // Let AI clean noise while running
 }
 
 export type TechniquePreset = 'balanced' | 'aggressive' | 'subtle';
@@ -93,7 +95,17 @@ export type SSEEventType =
   | 'pivot_suggested'
   | 'complete'
   | 'status'
-  | 'error';
+  | 'error'
+  | 'phase'
+  | 'curate_ban'
+  | 'curate_promote'
+  | 'narrative'
+  | 'cycle_start'
+  | 'cycle_complete'
+  | 'prompts'
+  | 'validate_done'
+  | 'grow_done'
+  | 'init';
 
 export interface SSEEvent {
   type: SSEEventType;

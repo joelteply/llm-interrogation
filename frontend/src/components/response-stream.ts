@@ -225,15 +225,50 @@ export class ResponseStream extends LitElement {
 
     .running-banner {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      padding: 16px;
-      background: linear-gradient(90deg, rgba(88, 166, 255, 0.1) 0%, rgba(163, 113, 247, 0.1) 100%);
-      border: 1px solid rgba(88, 166, 255, 0.3);
-      border-radius: 8px;
-      margin-bottom: 20px;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 14px;
+      background: linear-gradient(90deg, rgba(88, 166, 255, 0.08) 0%, rgba(163, 113, 247, 0.08) 100%);
+      border: 1px solid rgba(88, 166, 255, 0.2);
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .running-banner:not(.idle) {
       animation: glow-pulse 2s ease-in-out infinite;
+    }
+
+    .running-banner.idle {
+      background: rgba(110, 118, 129, 0.1);
+      border-color: rgba(110, 118, 129, 0.2);
+    }
+
+    .narrative-box {
+      background: rgba(63, 185, 80, 0.08);
+      border: 1px solid rgba(63, 185, 80, 0.25);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+    }
+
+    .narrative-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: #3fb950;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .narrative-content {
+      font-size: 13px;
+      color: #c9d1d9;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      max-height: 150px;
+      overflow-y: auto;
     }
 
     @keyframes glow-pulse {
@@ -255,8 +290,14 @@ export class ResponseStream extends LitElement {
     }
 
     .running-text {
-      font-size: 14px;
-      font-weight: 600;
+      font-size: 12px;
+      font-weight: 500;
+      color: #8b949e;
+      white-space: pre-wrap;
+      flex: 1;
+    }
+
+    .running-banner:not(.idle) .running-text {
       color: #58a6ff;
     }
 
@@ -647,7 +688,12 @@ export class ResponseStream extends LitElement {
         </div>
 
         <div class="content">
-          ${isRunning ? html`
+          ${this._probeState.narrative ? html`
+            <div class="narrative-box">
+              <div class="narrative-header">📓 Working Theory</div>
+              <div class="narrative-content">${this._probeState.narrative}</div>
+            </div>
+          ` : isRunning ? html`
             <div class="running-banner">
               <div class="spinner"></div>
               <span class="running-text">Interrogating subjects...</span>
@@ -706,7 +752,7 @@ export class ResponseStream extends LitElement {
         </div>
 
         <div class="responses-list">
-          ${responses.slice(0, 10).map((r: any, i: number) => {
+          ${responses.slice(-10).reverse().map((r: any, i: number) => {
             const isNew = i === 0 && isActive && isCurrent;
             return html`
               <div class="subject-response ${isNew ? 'new' : ''}">

@@ -30,6 +30,8 @@ export class ProjectView extends LitElement {
       display: flex;
       align-items: center;
       gap: 16px;
+      flex: 1;
+      min-width: 0;
     }
 
     .back-btn {
@@ -58,21 +60,37 @@ export class ProjectView extends LitElement {
       margin: 0;
     }
 
+    .question-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .question-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #8b949e;
+      white-space: nowrap;
+    }
+
     .topic-input {
       font-size: 18px;
       font-weight: 600;
       color: #f0f6fc;
       background: transparent;
       border: none;
-      border-bottom: 2px solid transparent;
+      border-bottom: 2px solid #30363d;
       padding: 4px 0;
-      width: 300px;
+      flex: 1;
+      min-width: 0;
       outline: none;
       transition: border-color 150ms;
     }
 
     .topic-input:hover {
-      border-bottom-color: #30363d;
+      border-bottom-color: #484f58;
     }
 
     .topic-input:focus {
@@ -282,6 +300,30 @@ export class ProjectView extends LitElement {
       50% { opacity: 0.6; }
     }
 
+    .toggle-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      user-select: none;
+      background: #21262d;
+      color: #6e7681;
+      border: 1px solid #30363d;
+      transition: all 150ms;
+    }
+
+    .toggle-badge:hover {
+      background: #30363d;
+      color: #8b949e;
+    }
+
+    .toggle-badge.active {
+      background: rgba(63, 185, 80, 0.2);
+      color: #3fb950;
+      border-color: #3fb950;
+    }
+
     /* Recycle bin */
     .recycle-bin {
       position: relative;
@@ -486,6 +528,7 @@ export class ProjectView extends LitElement {
         ...s,
         hiddenEntities: this.project!.hidden_entities || [],
         promotedEntities: this.project!.promoted_entities || [],
+        narrative: this.project!.narrative || '',
       }));
 
       // Load findings
@@ -568,6 +611,8 @@ export class ProjectView extends LitElement {
         questions: state.questions.length > 0 ? state.questions.map(q => q.question) : Array(state.questionCount).fill(null),
         negative_entities: state.hiddenEntities,    // Entities to AVOID
         positive_entities: state.promotedEntities,  // Entities to FOCUS ON
+        auto_curate: state.autoCurate,              // Let AI clean up while running
+        infinite_mode: state.infiniteMode,          // Keep running until stopped
       },
       (event: SSEEvent) => {
         if (event.type === 'questions') {
@@ -577,6 +622,26 @@ export class ProjectView extends LitElement {
         } else if (event.type === 'findings_update') {
           probeState.update(s => ({ ...s, findings: event.data as Findings }));
           this.findings = event.data as Findings;
+        } else if (event.type === 'curate_ban') {
+          // AI auto-banned some noise entities
+          const banned = (event as any).entities as string[];
+          probeState.update(s => ({
+            ...s,
+            hiddenEntities: [...new Set([...s.hiddenEntities, ...banned])]
+          }));
+          console.log('Auto-banned:', banned);
+        } else if (event.type === 'curate_promote') {
+          // AI auto-promoted some promising entities
+          const promoted = (event as any).entities as string[];
+          probeState.update(s => ({
+            ...s,
+            promotedEntities: [...new Set([...s.promotedEntities, ...promoted])]
+          }));
+          console.log('Auto-promoted:', promoted);
+        } else if (event.type === 'narrative') {
+          // Interrogator's updated working theory
+          const text = (event.data as any)?.text || (event as any).text || '';
+          probeState.update(s => ({ ...s, narrative: text }));
         } else if (event.type === 'complete') {
           probeState.update(s => ({ ...s, isRunning: false }));
           this._abortController = null;
@@ -667,22 +732,25 @@ export class ProjectView extends LitElement {
       <div class="top-bar">
         <div class="top-left">
           <button class="back-btn" @click=${() => navigateTo('projects')}>←</button>
-          <input
-            class="topic-input"
-            type="text"
-            .value=${this._probeState.topic || this.project.name}
-            placeholder="Investigation topic..."
-            @input=${(e: Event) => {
-              const value = (e.target as HTMLInputElement).value;
-              probeState.update(s => ({ ...s, topic: value }));
-            }}
-            @blur=${() => {
-              // Auto-save topic on blur
-              if (this.projectName) {
-                updateProject(this.projectName, { topic: this._probeState.topic });
-              }
-            }}
-          />
+          <div class="question-field">
+            <span class="question-label">Q:</span>
+            <input
+              class="topic-input"
+              type="text"
+              .value=${this._probeState.topic || this.project.name}
+              placeholder="What do you want to extract?"
+              @input=${(e: Event) => {
+                const value = (e.target as HTMLInputElement).value;
+                probeState.update(s => ({ ...s, topic: value }));
+              }}
+              @blur=${() => {
+                // Auto-save topic on blur
+                if (this.projectName) {
+                  updateProject(this.projectName, { topic: this._probeState.topic });
+                }
+              }}
+            />
+          </div>
         </div>
         <div class="top-controls">
           <!-- Android Studio style run controls -->
@@ -711,6 +779,13 @@ export class ProjectView extends LitElement {
               style="cursor: pointer;"
             >
               ${this._probeState.responses.length}:${this._probeState.infiniteMode ? '∞' : this._probeState.runsPerQuestion * this._probeState.questionCount * this._probeState.selectedModels.length}
+            </span>
+            <span
+              class="toggle-badge ${this._probeState.autoCurate ? 'active' : ''}"
+              title="Auto-curate: AI cleans noise and promotes good entities while running"
+              @click=${() => probeState.update(s => ({ ...s, autoCurate: !s.autoCurate }))}
+            >
+              CURATE
             </span>
             <button
               class="run-btn stop"

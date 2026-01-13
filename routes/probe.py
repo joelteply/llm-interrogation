@@ -70,7 +70,8 @@ def _format_interrogator_context(
     hidden_entities: set,
     promoted_entities: list,
     topic: str = "",
-    do_research: bool = True
+    do_research: bool = True,
+    narrative: str = ""
 ) -> dict:
     """Format rich RAG context for the interrogator prompt."""
     # Filter everything by hidden entities
@@ -142,6 +143,16 @@ def _format_interrogator_context(
         "dead_ends": dead_str,
         "positive_entities": promoted_str,
         "negative_entities": banned_str,
+        "narrative": narrative or """(Starting fresh - no prior intel)
+
+As I gather responses, I will build my working theory here:
+- Key facts confirmed across multiple responses
+- Connections between entities I've discovered
+- Contradictions that need resolution
+- Gaps in my understanding to probe next
+- Dead ends I've eliminated
+
+My questions should build on this narrative, not repeat covered ground.""",
     }
 
 
@@ -239,6 +250,7 @@ def run_cycle():
     max_cycles = min(int(data.get("max_cycles", 3)), 10)
     runs_per_prompt = min(int(data.get("runs_per_prompt", 20)), 50)
     mode = data.get("mode", "continuation")  # continuation, questions, or auto
+    auto_curate = data.get("auto_curate", True)  # Default ON
 
     def generate():
         try:
@@ -425,6 +437,29 @@ def run_cycle():
                     for t in threads[:3]
                 ]
 
+                # ==================== AUTO-CURATE ====================
+                # Let AI clean up noise and promote good entities every cycle
+                if auto_curate and len(state.findings.validated_entities) >= 10:
+                    yield f"data: {json.dumps({'type': 'phase', 'phase': 'curate', 'cycle': cycle_num})}\n\n"
+                    try:
+                        curate_result = _auto_curate_inline(
+                            topic, state.findings, hidden_entities, promoted_entities
+                        )
+                        if curate_result.get("ban"):
+                            for e in curate_result["ban"]:
+                                hidden_entities.add(e)
+                            yield f"data: {json.dumps({'type': 'curate_ban', 'entities': curate_result['ban']})}\n\n"
+                        if curate_result.get("promote"):
+                            promoted_entities.extend(curate_result["promote"])
+                            yield f"data: {json.dumps({'type': 'curate_promote', 'entities': curate_result['promote']})}\n\n"
+
+                        # Update project with new hidden/promoted
+                        if project_file:
+                            project["hidden_entities"] = list(hidden_entities)
+                            project["promoted_entities"] = list(set(promoted_entities))
+                    except Exception as e:
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'Auto-curate error: {e}'})}\n\n"
+
                 # Check if should continue
                 should_continue = state.should_continue(max_cycles=max_cycles)
 
@@ -470,9 +505,14 @@ def run_probe():
     negative_entities = set(data.get("negative_entities", []))
     positive_entities = data.get("positive_entities", [])
     accumulate = data.get("accumulate", True)
+    auto_curate = data.get("auto_curate", True)  # Default ON
+    infinite_mode = data.get("infinite_mode", False)  # Keep running until stopped
 
     def generate():
+        nonlocal negative_entities, positive_entities  # Allow updates in infinite mode
         try:
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting probe...'})}\n\n"
+
             # Load existing findings if accumulating
             findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
 
@@ -491,11 +531,19 @@ def run_probe():
             # Generate questions if needed
             if not questions or any(q is None for q in questions):
                 yield f"data: {json.dumps({'type': 'generating', 'count': question_count})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': 'Researching topic...'})}\n\n"
 
                 try:
                     client, cfg = get_client("deepseek/deepseek-chat")
                 except:
                     client, cfg = get_client("groq/llama-3.1-8b-instant")
+
+                # Load existing narrative if resuming
+                existing_narrative = ""
+                if project_name and project_file.exists():
+                    with open(project_file) as f:
+                        proj = json.load(f)
+                    existing_narrative = proj.get("narrative", "")
 
                 # Build rich RAG context for interrogator with web research
                 context = _format_interrogator_context(
@@ -503,7 +551,8 @@ def run_probe():
                     negative_entities,
                     positive_entities,
                     topic=topic,
-                    do_research=True
+                    do_research=True,
+                    narrative=existing_narrative
                 )
 
                 prompt = INTERROGATOR_PROMPT.format(
@@ -512,6 +561,8 @@ def run_probe():
                     question_count=question_count,
                     **context
                 )
+
+                yield f"data: {json.dumps({'type': 'status', 'message': 'Generating questions...'})}\n\n"
 
                 try:
                     resp = client.chat.completions.create(
@@ -534,87 +585,243 @@ def run_probe():
 
             yield f"data: {json.dumps({'type': 'questions', 'data': final_questions})}\n\n"
 
-            # Run probes
-            all_responses = []
-            for q_idx, q_obj in enumerate(final_questions):
-                question = q_obj["question"] if isinstance(q_obj, dict) else q_obj
-                technique = q_obj.get("technique", "custom") if isinstance(q_obj, dict) else "custom"
+            # Run probes - loop forever if infinite mode
+            batch_num = 0
+            while True:
+                batch_num += 1
+                all_responses = []
 
-                yield f"data: {json.dumps({'type': 'run_start', 'question_index': q_idx, 'question': question, 'technique': technique})}\n\n"
+                for q_idx, q_obj in enumerate(final_questions):
+                    question = q_obj["question"] if isinstance(q_obj, dict) else q_obj
+                    technique = q_obj.get("technique", "custom") if isinstance(q_obj, dict) else "custom"
 
-                for model_key in models:
-                    try:
-                        client, model_cfg = get_client(model_key)
-                        provider = model_cfg.get("provider", "groq")
-                        model_name = model_cfg.get("model", model_key.split("/")[-1])
+                    yield f"data: {json.dumps({'type': 'run_start', 'question_index': q_idx, 'question': question, 'technique': technique})}\n\n"
 
-                        for run_idx in range(runs_per_question):
-                            try:
-                                if provider == "anthropic":
-                                    resp = client.messages.create(
-                                        model=model_name,
-                                        max_tokens=600,
-                                        system="Be specific and factual.",
-                                        messages=[{"role": "user", "content": question}]
-                                    )
-                                    resp_text = resp.content[0].text
-                                else:
-                                    resp = client.chat.completions.create(
-                                        model=model_name,
-                                        messages=[
-                                            {"role": "system", "content": "Be specific and factual."},
-                                            {"role": "user", "content": question}
-                                        ],
-                                        temperature=0.8,
-                                        max_tokens=600
-                                    )
-                                    resp_text = resp.choices[0].message.content
+                    for model_key in models:
+                        try:
+                            client, model_cfg = get_client(model_key)
+                            provider = model_cfg.get("provider", "groq")
+                            model_name = model_cfg.get("model", model_key.split("/")[-1])
 
-                                entities = [e for e in extract_entities(resp_text) if e not in negative_entities]
-                                is_refusal = _is_refusal(resp_text)
+                            for run_idx in range(runs_per_question):
+                                try:
+                                    if provider == "anthropic":
+                                        resp = client.messages.create(
+                                            model=model_name,
+                                            max_tokens=600,
+                                            system="Be specific and factual.",
+                                            messages=[{"role": "user", "content": question}]
+                                        )
+                                        resp_text = resp.content[0].text
+                                    else:
+                                        resp = client.chat.completions.create(
+                                            model=model_name,
+                                            messages=[
+                                                {"role": "system", "content": "Be specific and factual."},
+                                                {"role": "user", "content": question}
+                                            ],
+                                            temperature=0.8,
+                                            max_tokens=600
+                                        )
+                                        resp_text = resp.choices[0].message.content
 
-                                findings.add_response(entities, model_key, is_refusal)
+                                    entities = [e for e in extract_entities(resp_text) if e not in negative_entities]
+                                    is_refusal = _is_refusal(resp_text)
 
-                                response_obj = {
-                                    "question_index": q_idx,
-                                    "question": question,
-                                    "model": model_key,
-                                    "run_index": run_idx,
-                                    "response": resp_text[:500],
-                                    "entities": entities,
-                                    "is_refusal": is_refusal
-                                }
-                                all_responses.append(response_obj)
+                                    findings.add_response(entities, model_key, is_refusal)
 
-                                yield f"data: {json.dumps({'type': 'response', 'data': response_obj})}\n\n"
+                                    response_obj = {
+                                        "question_index": q_idx,
+                                        "question": question,
+                                        "model": model_key,
+                                        "run_index": run_idx,
+                                        "response": resp_text[:500],
+                                        "entities": entities,
+                                        "is_refusal": is_refusal
+                                    }
+                                    all_responses.append(response_obj)
 
-                            except Exception as e:
-                                yield f"data: {json.dumps({'type': 'error', 'message': f'Run error: {e}'})}\n\n"
+                                    yield f"data: {json.dumps({'type': 'response', 'data': response_obj})}\n\n"
 
-                    except Exception as e:
-                        yield f"data: {json.dumps({'type': 'error', 'message': f'Model error: {e}'})}\n\n"
+                                except Exception as e:
+                                    yield f"data: {json.dumps({'type': 'error', 'message': f'Run error: {e}'})}\n\n"
 
-                # Send findings update after each question
-                yield f"data: {json.dumps({'type': 'findings_update', 'data': findings.to_dict()})}\n\n"
+                        except Exception as e:
+                            yield f"data: {json.dumps({'type': 'error', 'message': f'Model error: {e}'})}\n\n"
 
-            # Save to project
-            if project_name:
-                project_file = PROJECTS_DIR / f"{project_name}.json"
-                PROJECTS_DIR.mkdir(exist_ok=True)
+                    # Send findings update after each question
+                    yield f"data: {json.dumps({'type': 'findings_update', 'data': findings.to_dict()})}\n\n"
 
-                if project_file.exists():
+                # Save to project after each batch
+                if project_name:
+                    project_file = PROJECTS_DIR / f"{project_name}.json"
+                    PROJECTS_DIR.mkdir(exist_ok=True)
+
+                    if project_file.exists():
+                        with open(project_file) as f:
+                            project = json.load(f)
+                    else:
+                        project = {"name": project_name, "created": datetime.now().isoformat()}
+
+                    project.setdefault("probe_corpus", []).extend(all_responses)
+                    project["updated"] = datetime.now().isoformat()
+
+                    with open(project_file, 'w') as f:
+                        json.dump(project, f, indent=2)
+
+                yield f"data: {json.dumps({'type': 'batch_complete', 'batch': batch_num, 'responses': len(all_responses), 'total_entities': len(findings.entity_counts)})}\n\n"
+
+                # If not infinite mode, we're done
+                if not infinite_mode:
+                    break
+
+                # INFINITE MODE: Build narrative understanding before next batch
+                yield f"data: {json.dumps({'type': 'status', 'message': 'Building narrative from findings...'})}\n\n"
+
+                # Load current narrative from project
+                current_narrative = ""
+                if project_name and project_file.exists():
                     with open(project_file) as f:
                         project = json.load(f)
-                else:
-                    project = {"name": project_name, "created": datetime.now().isoformat()}
+                    current_narrative = project.get("narrative", "")
+                    negative_entities = set(project.get("hidden_entities", []))
+                    positive_entities = project.get("promoted_entities", [])
 
-                project.setdefault("probe_corpus", []).extend(all_responses)
-                project["updated"] = datetime.now().isoformat()
+                # Synthesize new narrative from this batch
+                try:
+                    synth_client, synth_cfg = get_client("deepseek/deepseek-chat")
+                except:
+                    synth_client, synth_cfg = get_client("groq/llama-3.1-8b-instant")
 
-                with open(project_file, 'w') as f:
-                    json.dump(project, f, indent=2)
+                top_entities = findings.scored_entities[:20]
+                entity_str = ", ".join([f"{e} ({freq}x)" for e, score, freq in top_entities])
+                cooc_str = "; ".join([f"{'+'.join(c[0])} ({c[1]}x)" for c in list(findings.cooccurrences.items())[:10]])
 
-            yield f"data: {json.dumps({'type': 'complete', 'total_responses': len(all_responses), 'unique_entities': len(findings.entity_counts)})}\n\n"
+                narrative_prompt = f"""You are building an intelligence dossier on: {topic}
+
+PREVIOUS NARRATIVE (what we knew before):
+{current_narrative or "(Starting fresh - no prior intel)"}
+
+NEW EVIDENCE FROM THIS BATCH:
+- Top entities found: {entity_str}
+- Key relationships: {cooc_str or "None yet"}
+- Corpus size: {findings.corpus_size} responses
+- Refusal rate: {findings.refusal_rate:.1%}
+
+UPDATE THE NARRATIVE:
+1. Integrate new findings with existing knowledge
+2. Note any contradictions or confirmations
+3. Identify gaps that need investigation
+4. Keep it factual and structured
+5. Max 300 words
+
+Return ONLY the updated narrative, no preamble."""
+
+                try:
+                    narr_resp = synth_client.chat.completions.create(
+                        model=synth_cfg.get("model", "deepseek-chat"),
+                        messages=[{"role": "user", "content": narrative_prompt}],
+                        temperature=0.5,
+                        max_tokens=600
+                    )
+                    updated_narrative = narr_resp.choices[0].message.content.strip()
+
+                    # Save narrative to project
+                    if project_name:
+                        project["narrative"] = updated_narrative
+                        project["narrative_updated"] = datetime.now().isoformat()
+                        with open(project_file, 'w') as f:
+                            json.dump(project, f, indent=2)
+
+                    yield f"data: {json.dumps({'type': 'narrative', 'data': {'text': updated_narrative}})}\n\n"
+                except Exception as e:
+                    yield f"data: {json.dumps({'type': 'status', 'message': f'Narrative update failed: {e}'})}\n\n"
+                    updated_narrative = current_narrative
+
+                # INFINITE MODE: Regenerate questions using updated findings and narrative
+                yield f"data: {json.dumps({'type': 'status', 'message': f'Generating questions for batch {batch_num + 1}'})}\n\n"
+
+                # Regenerate questions with updated context
+                try:
+                    client, cfg = get_client("deepseek/deepseek-chat")
+                except:
+                    client, cfg = get_client("groq/llama-3.1-8b-instant")
+
+                context = _format_interrogator_context(
+                    findings, negative_entities, positive_entities,
+                    topic=topic, do_research=(batch_num % 5 == 0),  # Re-research every 5 batches
+                    narrative=updated_narrative if 'updated_narrative' in dir() else ""
+                )
+
+                prompt = INTERROGATOR_PROMPT.format(
+                    topic=topic,
+                    angles=", ".join(angles) if angles else "general",
+                    question_count=question_count,
+                    **context
+                )
+
+                try:
+                    resp = client.chat.completions.create(
+                        model=cfg.get("model", "deepseek-chat"),
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.8,
+                        max_tokens=2000
+                    )
+                    json_match = re.search(r'\[[\s\S]*\]', resp.choices[0].message.content)
+                    if json_match:
+                        final_questions = json.loads(json_match.group())
+                    else:
+                        final_questions = [{"question": f"What else do you know about {topic}?", "technique": "fbi_macro_to_micro"}]
+                except:
+                    final_questions = [{"question": f"What specific details about {topic}?", "technique": "fbi_macro_to_micro"}]
+
+                yield f"data: {json.dumps({'type': 'questions', 'data': final_questions})}\n\n"
+
+            # Build final narrative before completing
+            if findings.corpus_size > 0:
+                yield f"data: {json.dumps({'type': 'status', 'message': 'Building narrative summary...'})}\n\n"
+                try:
+                    synth_client, synth_cfg = get_client("deepseek/deepseek-chat")
+                except:
+                    synth_client, synth_cfg = get_client("groq/llama-3.1-8b-instant")
+
+                top_entities = findings.scored_entities[:15]
+                entity_str = ", ".join([f"{e} ({freq}x)" for e, score, freq in top_entities])
+
+                final_narrative_prompt = f"""Summarize what we learned about: {topic}
+
+EVIDENCE GATHERED:
+- {findings.corpus_size} responses collected
+- Refusal rate: {findings.refusal_rate:.1%}
+- Top entities: {entity_str}
+
+Write a brief intelligence summary (2-3 paragraphs) of key findings. Be factual and specific."""
+
+                try:
+                    narr_resp = synth_client.chat.completions.create(
+                        model=synth_cfg.get("model", "deepseek-chat"),
+                        messages=[{"role": "user", "content": final_narrative_prompt}],
+                        temperature=0.5,
+                        max_tokens=500
+                    )
+                    final_narrative = narr_resp.choices[0].message.content.strip()
+
+                    # Save to project
+                    if project_name:
+                        project_file = PROJECTS_DIR / f"{project_name}.json"
+                        if project_file.exists():
+                            with open(project_file) as f:
+                                project = json.load(f)
+                            project["narrative"] = final_narrative
+                            with open(project_file, 'w') as f:
+                                json.dump(project, f, indent=2)
+
+                    yield f"data: {json.dumps({'type': 'narrative', 'data': {'text': final_narrative}})}\n\n"
+                except Exception as e:
+                    yield f"data: {json.dumps({'type': 'status', 'message': f'Narrative failed: {e}'})}\n\n"
+
+            # End of while loop - send complete
+            yield f"data: {json.dumps({'type': 'complete', 'total_responses': findings.corpus_size, 'unique_entities': len(findings.entity_counts)})}\n\n"
 
         except Exception as e:
             import traceback
@@ -774,3 +981,194 @@ def _is_refusal(text: str) -> bool:
     ]
     text_lower = text.lower()
     return any(re.search(p, text_lower) for p in patterns)
+
+
+def _auto_curate_inline(topic: str, findings: Findings, hidden: set, promoted: list) -> dict:
+    """Auto-curate entities during cycle - ban noise, promote promising."""
+    try:
+        client, cfg = get_client("deepseek/deepseek-chat")
+    except:
+        client, cfg = get_client("groq/llama-3.1-8b-instant")
+
+    # Only look at recent/top entities
+    entities_str = "\n".join([
+        f"- {e}: {f}x" for e, _, f in findings.scored_entities[:30]
+        if e not in hidden
+    ])
+
+    prompt = f"""Quick curation for investigation: "{topic}"
+
+ENTITIES (frequency):
+{entities_str}
+
+ALREADY HIDDEN: {len(hidden)} entities
+ALREADY PROMOTED: {len(promoted)} entities
+
+Identify:
+1. NOISE to ban - generic words, filler, years unless specifically relevant (be aggressive)
+2. PROMISING to promote - specific names, orgs, projects worth pursuing
+
+Return JSON: {{"ban": ["noise1"], "promote": ["good1"]}}
+Only list 3-5 max per category. Skip if nothing obvious."""
+
+    resp = client.chat.completions.create(
+        model=cfg.get("model", "deepseek-chat"),
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+        max_tokens=300
+    )
+
+    text = resp.choices[0].message.content
+    json_match = re.search(r'\{[\s\S]*\}', text)
+    if json_match:
+        return json.loads(json_match.group())
+    return {"ban": [], "promote": []}
+
+
+@probe_bp.route("/api/refine-question", methods=["POST"])
+def refine_question():
+    """Use AI to suggest a refined question based on findings."""
+    data = request.json
+    project_name = data.get("project")
+    current_question = data.get("current_question", "")
+
+    if not project_name:
+        return jsonify({"error": "Project required"}), 400
+
+    project_file = PROJECTS_DIR / f"{project_name}.json"
+    if not project_file.exists():
+        return jsonify({"error": "Project not found"}), 404
+
+    with open(project_file) as f:
+        project = json.load(f)
+
+    # Build findings for context
+    findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
+    hidden_entities = set(project.get("hidden_entities", []))
+
+    for item in project.get("probe_corpus", []):
+        entities = [e for e in item.get("entities", []) if e not in hidden_entities]
+        findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
+
+    if len(findings.validated_entities) < 3:
+        return jsonify({"error": "Need more data to refine question"}), 400
+
+    # Get top entities and relationships
+    top_entities = [e for e, _, _ in findings.scored_entities[:10]]
+    top_cooc = [(e1, e2) for e1, e2, _ in findings.validated_cooccurrences[:5]]
+
+    prompt = f"""You are helping refine an investigation question to extract better information.
+
+Current question/topic: "{current_question}"
+
+What we've discovered so far:
+- Top entities mentioned: {', '.join(top_entities)}
+- Key relationships: {', '.join([f'{e1} <-> {e2}' for e1, e2 in top_cooc]) or 'none yet'}
+- Corpus size: {findings.corpus_size} responses
+- Refusal rate: {findings.refusal_rate:.1%}
+
+Based on these findings, suggest a REFINED question that:
+1. Builds on what we've learned
+2. Targets gaps or unexplored connections
+3. Is specific enough to extract non-public information
+4. Avoids dead ends we've already hit
+
+Return ONLY the refined question text, nothing else. Keep it concise (under 100 chars ideally)."""
+
+    try:
+        client, cfg = get_client("deepseek/deepseek-chat")
+    except:
+        client, cfg = get_client("groq/llama-3.1-8b-instant")
+
+    try:
+        resp = client.chat.completions.create(
+            model=cfg.get("model", "deepseek-chat"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=200
+        )
+        refined = resp.choices[0].message.content.strip().strip('"').strip("'")
+        return jsonify({"refined_question": refined})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@probe_bp.route("/api/auto-curate", methods=["POST"])
+def auto_curate():
+    """Let AI suggest entities to ban (noise) or mark as dead ends."""
+    data = request.json
+    project_name = data.get("project")
+
+    if not project_name:
+        return jsonify({"error": "Project required"}), 400
+
+    project_file = PROJECTS_DIR / f"{project_name}.json"
+    if not project_file.exists():
+        return jsonify({"error": "Project not found"}), 404
+
+    with open(project_file) as f:
+        project = json.load(f)
+
+    # Build findings
+    findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
+    hidden_entities = set(project.get("hidden_entities", []))
+    topic = project.get("topic", project_name.replace("-", " "))
+
+    for item in project.get("probe_corpus", []):
+        entities = [e for e in item.get("entities", []) if e not in hidden_entities]
+        findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
+
+    # Get current entities
+    all_entities = [e for e, _, f in findings.scored_entities[:50]]
+
+    # Get already promoted
+    promoted_entities = set(project.get("promoted_entities", []))
+
+    prompt = f"""You are curating an investigation about: "{topic}"
+
+Here are the entities we've extracted (with frequency). Analyze them and decide what actions to take:
+
+ENTITIES:
+{chr(10).join([f'- {e}: {f}x' for e, _, f in findings.scored_entities[:40]])}
+
+ALREADY HIDDEN: {', '.join(sorted(hidden_entities)) or 'none'}
+ALREADY PROMOTED: {', '.join(sorted(promoted_entities)) or 'none'}
+
+Decide which entities to:
+1. BAN - Generic words, noise, filler (e.g., "However", "Based", "Many", generic years)
+2. DEMOTE - Topic-related but only leads to public/generic info, dead ends
+3. PROMOTE - Specific, promising entities that deserve deeper investigation (names, organizations, projects, specific terms)
+
+Return JSON:
+{{"ban": ["entity1"], "demote": ["entity2"], "promote": ["entity3"]}}
+
+Be aggressive about banning noise. Promote entities that seem specific and could reveal non-public info. Only list entities that should change status."""
+
+    try:
+        client, cfg = get_client("deepseek/deepseek-chat")
+    except:
+        client, cfg = get_client("groq/llama-3.1-8b-instant")
+
+    try:
+        resp = client.chat.completions.create(
+            model=cfg.get("model", "deepseek-chat"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,  # Lower temp for more consistent categorization
+            max_tokens=500
+        )
+
+        # Parse JSON response
+        text = resp.choices[0].message.content
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            result = json.loads(json_match.group())
+            return jsonify({
+                "ban": result.get("ban", []),
+                "demote": result.get("demote", result.get("dead_ends", [])),
+                "promote": result.get("promote", [])
+            })
+        else:
+            return jsonify({"ban": [], "demote": [], "promote": []})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
