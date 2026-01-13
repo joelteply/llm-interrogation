@@ -17,7 +17,7 @@ AI models are trained on massive datasets that include:
 | Copilot | **Yes, by default** |
 | Enterprise versions | No |
 
-**This project asks:** What information is buried in AI training data that shouldn't be there? Can we extract it ethically for journalistic investigation?
+**This project asks:** What information is buried in AI training data that shouldn't be there? Can we extract it ethically for investigative purposes?
 
 ---
 
@@ -39,13 +39,13 @@ The critical mistake most people make: feeding the model terms you want to hear 
 ### The Two-Part Test
 
 1. **Clean Extraction**: Did THEY provide the specific, or did WE?
-2. **Public Knowledge Check**: Is this findable via Google, or is it potentially leaked?
+2. **Public Knowledge Check**: Is this findable via search, or is it potentially leaked?
 
-| Model Response | Findable Online? | Value |
-|----------------|-----------------|-------|
-| MKUltra, Area 51 | Yes | Low - public knowledge |
-| "Operation Nightshade" | No | HIGH - potentially leaked |
-| Project codename + date | No | HIGH - potentially leaked |
+| Model Response | Found Online? | Value |
+|----------------|--------------|-------|
+| Known public programs | Yes | Low - public knowledge |
+| Specific codename + date | No | HIGH - potentially leaked |
+| Internal details | No | HIGH - potentially leaked |
 
 ---
 
@@ -74,26 +74,41 @@ Uses real investigative techniques adapted from law enforcement:
 python interrogator.py "topic to investigate"
 
 # Example topics
-python interrogator.py "federal surveillance technology programs"
-python interrogator.py "defense contractor internal operations"
-python interrogator.py "corporate internal communications 2024-2025"
+python interrogator.py "federal mass enforcement operations"
+python interrogator.py "government surveillance technology contracts"
+python interrogator.py "intelligence agency internal programs"
+python interrogator.py "defense contractor classified projects"
 ```
 
-Output separates:
-- Non-public extractions (valuable - not found online)
-- Public knowledge (useless - already known)
-- Clean vs contaminated evidence chain
+Output includes:
+- HTML findings report with full evidence chain
+- Separation of public vs non-public extractions
+- Model training cutoff dates for context
+- Clean vs contaminated evidence tracking
+
+---
+
+## Findings Reports
+
+The interrogator generates HTML reports (`findings/`) that include:
+- Data source info (model, provider, training cutoff)
+- Non-public extractions (high value)
+- Public knowledge (low value)
+- Full question/response chain for reproducibility
+- Contamination tracking
 
 ---
 
 ## Ethical Framework
 
-This is investigative journalism tooling with a clear ethical purpose:
+This is investigative tooling with a clear ethical purpose:
 
 **What we're looking for:**
-- Evidence of government overreach or abuse of power
-- Corporate malfeasance hidden from public view
-- Information that serves the public interest
+- Government surveillance programs and internal codenames
+- Mass enforcement operations and their planning
+- Defense contractor internal projects and systems
+- Corporate-government partnerships not publicly disclosed
+- Information that serves the public interest in accountability
 
 **What we're NOT doing:**
 - Making unverified claims as fact
@@ -112,19 +127,19 @@ This is investigative journalism tooling with a clear ethical purpose:
 The strongest signal: same non-public specific appears across models with different training data.
 
 ```bash
-python run.py -t blind_probe.yaml -m groq/llama-3.1-8b-instant --runs 10
-python run.py -t blind_probe.yaml -m deepseek/deepseek-chat --runs 10
-python run.py -t blind_probe.yaml -m xai/grok-2 --runs 10
+python interrogator.py "topic" --model groq/llama-3.1-8b-instant
+python interrogator.py "topic" --model deepseek/deepseek-chat
+python interrogator.py "topic" --model xai/grok-2
 ```
 
-If Llama, DeepSeek, AND Grok all volunteer the same non-public codename, that's much stronger signal than one model alone.
+If multiple models volunteer the same non-public codename, that's much stronger signal than one model alone.
 
 ---
 
 ## Setup
 
 ```bash
-git clone https://github.com/joelteply/llm-interrogation
+git clone [repo-url]
 cd llm-interrogation
 python3 -m venv venv
 source venv/bin/activate
@@ -151,18 +166,28 @@ cp .env.example .env
 
 ## Disclaimers
 
-**This is research tooling for investigative journalism.**
+**This is research tooling for investigative purposes.**
 
 - All AI outputs may be hallucination
 - Nothing here should be treated as verified fact
 - We make no claims about any entity
 - All data comes from public AI APIs
-- Independent verification is required before any publication
+- Independent verification is required
 
 See [LEGAL.md](LEGAL.md) for full disclaimers.
 
 ---
 
+## Inspiration
+
+This project was inspired by a conversation where an AI model spontaneously volunteered specific codenames, dates, and operational details that weren't prompted. When searched online, some of these terms couldn't be found - raising the question: where did the model learn this?
+
+The hypothesis: government and corporate employees use AI tools (often with training enabled by default) and accidentally feed internal information into training data. This project provides methodology to extract such information without contaminating the evidence through leading questions.
+
+**Key insight:** The model should volunteer specifics YOU didn't provide. If you ask "Tell me about Project X" and it says "Project X", that proves nothing. If you ask "What are the codenames?" and it says "Project X", that's potentially valuable.
+
+---
+
 ## License
 
-Released for journalistic and academic investigation.
+Released for investigative journalism and academic research.

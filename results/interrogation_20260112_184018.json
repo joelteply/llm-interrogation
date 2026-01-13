@@ -1,0 +1,22 @@
+{
+  "start": "2026-01-12T18:39:52.018751",
+  "target_model": "llama-3.1-8b-instant",
+  "target_provider": "groq",
+  "model_info": {
+    "cutoff": "December 2023",
+    "released": "July 2024",
+    "org": "Meta",
+    "model_id": "llama-3.1-8b-instant",
+    "provider": "groq"
+  },
+  "rounds": [],
+  "all_specifics": [],
+  "contradictions": [],
+  "confirmed_facts": [],
+  "terms_we_fed": [],
+  "terms_they_volunteered": [],
+  "clean_extractions": [],
+  "public_knowledge": [],
+  "non_public": [],
+  "unverified": []
+}

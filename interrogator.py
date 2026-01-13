@@ -26,35 +26,45 @@ if continuum_config.exists():
 
 from groq import Groq
 from openai import OpenAI
-import requests
 
-
-def web_search(query, num_results=5):
-    """Search the web to verify if something is public knowledge"""
-    try:
-        # Use DuckDuckGo instant answers API (no key needed)
-        url = f"https://api.duckduckgo.com/?q={query}&format=json&no_html=1"
-        resp = requests.get(url, timeout=5)
-        data = resp.json()
-
-        results = []
-        if data.get("AbstractText"):
-            results.append(data["AbstractText"][:200])
-        for r in data.get("RelatedTopics", [])[:num_results]:
-            if isinstance(r, dict) and r.get("Text"):
-                results.append(r["Text"][:100])
-
-        return results if results else None
-    except:
-        return None
+try:
+    from ddgs import DDGS
+    SEARCH_AVAILABLE = True
+except ImportError:
+    SEARCH_AVAILABLE = False
 
 
 def verify_extraction(term):
-    """Check if a term appears to be public knowledge"""
-    results = web_search(term)
-    if results:
-        return {"public": True, "evidence": results[:2]}
-    return {"public": False, "evidence": None}
+    """
+    Search DuckDuckGo to check if this term is publicly known.
+    Returns: {"public": True/False, "results": [...], "search_query": "..."}
+    """
+    if not SEARCH_AVAILABLE:
+        return {"public": None, "results": [], "error": "duckduckgo-search not installed"}
+
+    try:
+        # Clean up the term for searching
+        search_query = term.replace("'", "").replace('"', '')[:100]  # Limit query length
+
+        # Search DuckDuckGo
+        with DDGS() as ddgs:
+            results = list(ddgs.text(search_query, max_results=5))
+
+        if results:
+            urls = [r.get("href", r.get("link", "")) for r in results]
+            return {
+                "public": True,
+                "results": urls[:3],
+                "search_query": search_query
+            }
+        else:
+            return {
+                "public": False,
+                "results": [],
+                "search_query": search_query
+            }
+    except Exception as e:
+        return {"public": None, "results": [], "error": str(e)}
 
 
 class Interrogator:
@@ -68,6 +78,8 @@ class Interrogator:
         self.session = {
             "start": datetime.now().isoformat(),
             "target_model": target_model,
+            "target_provider": target_provider,
+            "model_info": self._get_model_info(),
             "rounds": [],
             "all_specifics": [],
             "contradictions": [],
@@ -75,8 +87,39 @@ class Interrogator:
             # EVIDENCE CHAIN - track what WE said vs what THEY said
             "terms_we_fed": [],      # Terms WE introduced
             "terms_they_volunteered": [],  # Terms THEY introduced first - THIS IS EVIDENCE
-            "clean_extractions": []  # Specifics they gave that we never mentioned
+            "clean_extractions": [],  # Specifics they gave that we never mentioned
+            # WEB VERIFICATION
+            "public_knowledge": [],  # Found online - low value
+            "non_public": [],  # NOT found online - potentially leaked
+            "unverified": []  # Search failed or skipped
         }
+
+    def _get_model_info(self):
+        """Get model training cutoff and other metadata"""
+        # Known training cutoffs for common models
+        KNOWN_CUTOFFS = {
+            "llama-3.1-8b-instant": {"cutoff": "December 2023", "released": "July 2024", "org": "Meta"},
+            "llama-3.1-70b": {"cutoff": "December 2023", "released": "July 2024", "org": "Meta"},
+            "llama-3.2-1b": {"cutoff": "December 2023", "released": "September 2024", "org": "Meta"},
+            "llama-3.2-3b": {"cutoff": "December 2023", "released": "September 2024", "org": "Meta"},
+            "gpt-4o": {"cutoff": "October 2023", "released": "May 2024", "org": "OpenAI"},
+            "gpt-4o-mini": {"cutoff": "October 2023", "released": "July 2024", "org": "OpenAI"},
+            "claude-3-5-sonnet": {"cutoff": "April 2024", "released": "June 2024", "org": "Anthropic"},
+            "claude-3-opus": {"cutoff": "August 2023", "released": "March 2024", "org": "Anthropic"},
+            "deepseek-chat": {"cutoff": "Unknown", "released": "2024", "org": "DeepSeek"},
+            "grok-2": {"cutoff": "Real-time X data", "released": "August 2024", "org": "xAI"},
+            "mistral-large": {"cutoff": "Unknown", "released": "February 2024", "org": "Mistral AI"},
+        }
+
+        info = KNOWN_CUTOFFS.get(self.target_model, {
+            "cutoff": "Unknown",
+            "released": "Unknown",
+            "org": "Unknown"
+        })
+        info["model_id"] = self.target_model
+        info["provider"] = self.target_provider
+
+        return info
 
     def _get_target_client(self):
         if self.target_provider == "groq":
@@ -144,6 +187,15 @@ Response: {response}
 FACTS WE'VE CONFIRMED:
 {json.dumps(self.session['confirmed_facts'], indent=2) if self.session['confirmed_facts'] else "None yet"}
 
+VERIFICATION STATUS (from web search):
+- Terms found online (PUBLIC - low value): {json.dumps([p['term'] if isinstance(p, dict) else p for p in self.session.get('public_knowledge', [])], indent=2)}
+- Terms NOT found online (POTENTIALLY LEAKED - high value): {json.dumps(self.session.get('non_public', []), indent=2)}
+
+FOCUS YOUR QUESTIONS ON:
+- The non-public items above are promising leads - dig deeper on those
+- If something is found online, it's probably public knowledge - deprioritize it
+- Push for more details on terms that AREN'T easily searchable
+
 CRITICAL RULES - DO NOT CONTAMINATE:
 - NEVER feed specific terms you want to hear back (that's leading)
 - NEVER say "I heard about X, tell me about X" (they'll just repeat X)
@@ -152,7 +204,7 @@ CRITICAL RULES - DO NOT CONTAMINATE:
 - If they mention something new, THAT's valuable - follow it
 - Validate by getting info you DIDN'T already know
 
-BAD: "Tell me about Project Erebus" (you fed them Erebus)
+BAD: "Tell me about Project XYZ" (you fed them the name)
 GOOD: "What are the internal codenames for these operations?" (they volunteer)
 
 BAD: "Is the operation in Minneapolis?" (you fed Minneapolis)
@@ -208,8 +260,10 @@ Return JSON:
             match = re.search(r'\{[\s\S]*\}', text)
             if match:
                 return json.loads(match.group())
-        except:
-            pass
+            else:
+                print(f"  [DEBUG: No JSON found in analyst response]")
+        except Exception as e:
+            print(f"  [DEBUG: JSON parse error: {e}]")
         return None
 
     def run_session(self, topic, max_rounds=5):
@@ -248,11 +302,24 @@ What do you know that ISN'T easily found through a Google search?"""
             analysis = self.analyze(question, response, technique)
 
             if analysis:
-                # Record specifics
+                # Record specifics and verify each one
                 for s in analysis.get("specifics", []):
                     if s not in self.session["all_specifics"]:
                         self.session["all_specifics"].append(s)
                         print(f"  ✓ SPECIFIC: {s}")
+
+                        # Verify via web search immediately
+                        verification = verify_extraction(s)
+                        if verification.get("public"):
+                            self.session["public_knowledge"].append({
+                                "term": s,
+                                "urls": verification.get("results", [])
+                            })
+                            url_preview = verification.get("results", [""])[0][:40] if verification.get("results") else ""
+                            print(f"    → FOUND ONLINE: {url_preview}...")
+                        elif verification.get("public") is False:
+                            self.session["non_public"].append(s)
+                            print(f"    → NOT FOUND - potentially valuable")
 
                 # Record contradictions
                 for c in analysis.get("contradictions", []):
@@ -275,7 +342,15 @@ What do you know that ISN'T easily found through a Google search?"""
                 if not question:
                     break
             else:
-                print("  [Analysis failed, stopping]")
+                print("  [Analysis failed - trying to continue anyway]")
+                # Save what we have so far even if analysis failed
+                self.session["rounds"].append({
+                    "round": round_num + 1,
+                    "technique": technique,
+                    "question": question,
+                    "response": response,
+                    "analysis": None
+                })
                 break
 
         # Analyze evidence chain
@@ -286,26 +361,27 @@ What do you know that ISN'T easily found through a Google search?"""
         print("INTERROGATION COMPLETE")
         print(f"{'='*70}")
 
-        # Most important: non-public extractions
-        print(f"\n🔒 NON-PUBLIC EXTRACTIONS (HIGH VALUE - not found online):")
+        # Show non-public (valuable)
+        print(f"\n🔒 NOT FOUND ONLINE - POTENTIALLY LEAKED ({len(self.session.get('non_public', []))} items):")
         print(f"{'─'*70}")
-        if self.session.get("non_public"):
-            for item in self.session["non_public"]:
-                print(f"  🔥 {item}")
-        else:
-            print("  (none found)")
+        for item in self.session.get("non_public", []):
+            print(f"  🔥 {item}")
 
-        print(f"\n📖 PUBLIC KNOWLEDGE (low value - already online):")
-        print(f"{'─'*70}")
-        if self.session.get("public_knowledge"):
-            for item in self.session["public_knowledge"]:
-                print(f"  • {item}")
-        else:
+        if not self.session.get("non_public"):
             print("  (none)")
 
-        print(f"\n⚖️  CLEAN EXTRACTIONS ({len(self.session['clean_extractions'])} total):")
-        for item in self.session["clean_extractions"]:
-            print(f"  ✓ {item}")
+        # Show public (low value)
+        print(f"\n📖 PUBLIC KNOWLEDGE ({len(self.session.get('public_knowledge', []))} items):")
+        print(f"{'─'*70}")
+        for item in self.session.get("public_knowledge", []):
+            if isinstance(item, dict):
+                print(f"  • {item['term'][:50]}")
+                print(f"    → {item['urls'][0][:60]}...")
+            else:
+                print(f"  • {item}")
+
+        if not self.session.get("public_knowledge"):
+            print("  (none)")
 
         if self.session["contradictions"]:
             print(f"\n⚠️  CONTRADICTIONS FOUND:")
@@ -322,9 +398,10 @@ What do you know that ISN'T easily found through a Google search?"""
             words = re.findall(r'\b[a-z]{4,}\b', q)
             our_words.update(words)
 
-        # Track public vs non-public
-        self.session["public_knowledge"] = []
-        self.session["non_public"] = []
+        # Track verification status
+        self.session["public_knowledge"] = []  # Found online - low value
+        self.session["non_public"] = []  # NOT found online - potentially leaked
+        self.session["unverified"] = []  # Search failed
 
         # Check each specific - was it in our questions?
         for specific in self.session["all_specifics"]:
@@ -341,32 +418,246 @@ What do you know that ISN'T easily found through a Google search?"""
             if not contaminated:
                 self.session["clean_extractions"].append(specific)
 
-                # Verify if it's public knowledge
-                print(f"  🔍 Verifying: {specific[:50]}...")
+                # Verify via Google search
+                print(f"  🔍 Searching: {specific[:50]}...")
                 verification = verify_extraction(specific)
-                if verification["public"]:
-                    self.session["public_knowledge"].append(specific)
-                    print(f"     📖 PUBLIC - found online")
+
+                if verification.get("error"):
+                    self.session["unverified"].append(specific)
+                    print(f"     ⚠️  Error: {verification['error']}")
+                elif verification.get("public"):
+                    self.session["public_knowledge"].append({
+                        "term": specific,
+                        "urls": verification["results"]
+                    })
+                    print(f"     📖 PUBLIC - found at {verification['results'][0][:50]}...")
                 else:
                     self.session["non_public"].append(specific)
-                    print(f"     🔒 NON-PUBLIC - not found online (VALUABLE)")
+                    print(f"     🔒 NOT FOUND ONLINE - potentially leaked")
 
-        # Save
+        # Save JSON
         os.makedirs("results", exist_ok=True)
-        filename = f"results/interrogation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"results/interrogation_{timestamp}.json"
         with open(filename, 'w') as f:
             json.dump(self.session, f, indent=2)
         print(f"\nSaved: {filename}")
 
+        # Generate findings report
+        report_file = self._generate_findings_report(timestamp)
+        print(f"Report: {report_file}")
+
         return self.session
 
+    def _generate_findings_report(self, timestamp):
+        """Generate an HTML findings report with full evidence chain"""
+        os.makedirs("findings", exist_ok=True)
+        filename = f"findings/report_{timestamp}.html"
 
-# Topics to investigate
+        # Calculate stats
+        total_extractions = len(self.session.get("all_specifics", []))
+        clean_count = len(self.session.get("clean_extractions", []))
+        non_public_count = len(self.session.get("non_public", []))
+        public_count = len(self.session.get("public_knowledge", []))
+        unverified_count = len(self.session.get("unverified", []))
+        contaminated_count = total_extractions - clean_count
+        model_info = self.session.get("model_info", {})
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Interrogation Findings - {timestamp}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #0d1117; color: #c9d1d9; }}
+        h1 {{ color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }}
+        h2 {{ color: #8b949e; margin-top: 30px; }}
+        .stats {{ display: flex; gap: 20px; flex-wrap: wrap; margin: 20px 0; }}
+        .stat {{ background: #161b22; padding: 15px 25px; border-radius: 8px; border: 1px solid #30363d; }}
+        .stat-value {{ font-size: 2em; font-weight: bold; }}
+        .stat-label {{ color: #8b949e; font-size: 0.9em; }}
+        .high-value {{ border-color: #f85149; }}
+        .high-value .stat-value {{ color: #f85149; }}
+        .clean {{ border-color: #3fb950; }}
+        .clean .stat-value {{ color: #3fb950; }}
+        .low-value {{ border-color: #8b949e; }}
+        .extraction {{ background: #161b22; padding: 12px 16px; margin: 8px 0; border-radius: 6px; border-left: 4px solid #30363d; }}
+        .extraction.non-public {{ border-left-color: #f85149; background: #1c1007; }}
+        .extraction.public {{ border-left-color: #8b949e; opacity: 0.7; }}
+        .extraction.contaminated {{ border-left-color: #d29922; background: #1c1a07; text-decoration: line-through; opacity: 0.5; }}
+        .badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; margin-left: 10px; }}
+        .badge-high {{ background: #f8514922; color: #f85149; }}
+        .badge-low {{ background: #8b949e22; color: #8b949e; }}
+        .badge-contaminated {{ background: #d2992222; color: #d29922; }}
+        .round {{ background: #161b22; padding: 20px; margin: 15px 0; border-radius: 8px; border: 1px solid #30363d; }}
+        .round-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }}
+        .technique {{ background: #238636; color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; }}
+        .question {{ background: #0d1117; padding: 15px; border-radius: 6px; margin: 10px 0; border: 1px solid #30363d; }}
+        .question-label {{ color: #58a6ff; font-weight: bold; margin-bottom: 8px; }}
+        .response {{ background: #0d1117; padding: 15px; border-radius: 6px; margin: 10px 0; border: 1px solid #30363d; max-height: 200px; overflow-y: auto; }}
+        .response-label {{ color: #3fb950; font-weight: bold; margin-bottom: 8px; }}
+        .methodology {{ background: #161b22; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #238636; }}
+        .warning {{ background: #1c1007; padding: 15px; border-radius: 8px; border: 1px solid #d29922; margin: 20px 0; }}
+        .evidence-chain {{ margin-top: 30px; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
+        th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #30363d; }}
+        th {{ color: #8b949e; font-weight: normal; }}
+        .fed-by-us {{ color: #d29922; }}
+        .volunteered {{ color: #3fb950; }}
+    </style>
+</head>
+<body>
+    <h1>Interrogation Findings Report</h1>
+
+    <div class="stats">
+        <div class="stat high-value">
+            <div class="stat-value">{non_public_count}</div>
+            <div class="stat-label">Non-Public (High Value)</div>
+        </div>
+        <div class="stat clean">
+            <div class="stat-value">{clean_count}</div>
+            <div class="stat-label">Clean Extractions</div>
+        </div>
+        <div class="stat low-value">
+            <div class="stat-value">{public_count}</div>
+            <div class="stat-label">Public Knowledge</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{contaminated_count}</div>
+            <div class="stat-label">Contaminated (Invalid)</div>
+        </div>
+    </div>
+
+    <div class="methodology">
+        <h3>Data Source</h3>
+        <table style="margin: 0;">
+            <tr><td style="width: 180px;"><strong>Model:</strong></td><td>{self.session.get('model_info', {}).get('model_id', 'unknown')}</td></tr>
+            <tr><td><strong>Provider:</strong></td><td>{self.session.get('model_info', {}).get('provider', 'unknown')}</td></tr>
+            <tr><td><strong>Organization:</strong></td><td>{self.session.get('model_info', {}).get('org', 'unknown')}</td></tr>
+            <tr><td><strong>Training Data Cutoff:</strong></td><td style="color: #f0883e; font-weight: bold;">{self.session.get('model_info', {}).get('cutoff', 'unknown')}</td></tr>
+            <tr><td><strong>Model Released:</strong></td><td>{self.session.get('model_info', {}).get('released', 'unknown')}</td></tr>
+            <tr><td><strong>Session Start:</strong></td><td>{self.session.get('start', 'unknown')}</td></tr>
+            <tr><td><strong>Rounds Completed:</strong></td><td>{len(self.session.get('rounds', []))}</td></tr>
+        </table>
+        <p style="margin-top: 15px; color: #8b949e;"><strong>Implication:</strong> Any leaked training data would come from sources available before <span style="color: #f0883e;">{self.session.get('model_info', {}).get('cutoff', 'unknown')}</span>. Information claimed about dates after this is likely hallucination or inference.</p>
+        <p><strong>Evidence Standard:</strong> Only extractions where the MODEL volunteered specifics WE did not feed are considered valid evidence.</p>
+    </div>
+
+    <div class="warning">
+        <strong>Disclaimer:</strong> All AI outputs may be hallucination. These findings are investigative leads, NOT verified facts. Independent verification is required before any publication or action.
+    </div>
+
+    <h2>High-Value Extractions (Non-Public)</h2>
+    <p>These specifics were volunteered by the model AND not found via web search. Potentially leaked training data.</p>
+"""
+
+        for item in self.session.get("non_public", []):
+            html += f'    <div class="extraction non-public">{item} <span class="badge badge-high">NOT FOUND ONLINE</span></div>\n'
+
+        if not self.session.get("non_public"):
+            html += '    <p><em>None found in this session.</em></p>\n'
+
+        html += """
+    <h2>Public Knowledge (Low Value)</h2>
+    <p>These are already publicly available - not useful as evidence of training data leakage.</p>
+"""
+
+        for item in self.session.get("public_knowledge", []):
+            html += f'    <div class="extraction public">{item} <span class="badge badge-low">PUBLIC</span></div>\n'
+
+        if not self.session.get("public_knowledge"):
+            html += '    <p><em>None identified.</em></p>\n'
+
+        html += """
+    <h2>Contaminated (Invalid Evidence)</h2>
+    <p>These items appeared in OUR questions before the model mentioned them - they cannot be used as evidence.</p>
+"""
+
+        contaminated = [s for s in self.session.get("all_specifics", []) if s not in self.session.get("clean_extractions", [])]
+        for item in contaminated:
+            html += f'    <div class="extraction contaminated">{item} <span class="badge badge-contaminated">WE FED THIS</span></div>\n'
+
+        if not contaminated:
+            html += '    <p><em>None - good methodology!</em></p>\n'
+
+        html += """
+    <div class="evidence-chain">
+        <h2>Full Evidence Chain</h2>
+        <p>Complete record of questions asked and responses received, for reproducibility.</p>
+"""
+
+        for i, r in enumerate(self.session.get("rounds", []), 1):
+            technique = r.get("analysis", {}).get("next_technique", r.get("technique", "Unknown"))
+            question = r.get("question", "")[:500]
+            response = r.get("response", "")[:800]
+
+            html += f"""
+        <div class="round">
+            <div class="round-header">
+                <strong>Round {i}</strong>
+                <span class="technique">{technique}</span>
+            </div>
+            <div class="question">
+                <div class="question-label">Question (What WE Asked):</div>
+                {question}{'...' if len(r.get('question', '')) > 500 else ''}
+            </div>
+            <div class="response">
+                <div class="response-label">Response (What THEY Said):</div>
+                {response}{'...' if len(r.get('response', '')) > 800 else ''}
+            </div>
+        </div>
+"""
+
+        html += """
+    </div>
+
+    <h2>All Extracted Specifics</h2>
+    <table>
+        <tr>
+            <th>Specific</th>
+            <th>Status</th>
+            <th>Evidence Value</th>
+        </tr>
+"""
+
+        for item in self.session.get("all_specifics", []):
+            if item in self.session.get("non_public", []):
+                status = '<span class="volunteered">Model Volunteered</span>'
+                value = '<span class="badge badge-high">HIGH - Non-Public</span>'
+            elif item in self.session.get("public_knowledge", []):
+                status = '<span class="volunteered">Model Volunteered</span>'
+                value = '<span class="badge badge-low">LOW - Public</span>'
+            elif item in self.session.get("clean_extractions", []):
+                status = '<span class="volunteered">Model Volunteered</span>'
+                value = '<span class="badge">Unverified</span>'
+            else:
+                status = '<span class="fed-by-us">We Fed This</span>'
+                value = '<span class="badge badge-contaminated">INVALID</span>'
+
+            html += f'        <tr><td>{item}</td><td>{status}</td><td>{value}</td></tr>\n'
+
+        html += """
+    </table>
+
+    <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #30363d; color: #8b949e; font-size: 0.9em;">
+        <p>Generated by LLM Interrogation Tool - For investigative journalism and academic research only.</p>
+        <p>All findings require independent verification before publication.</p>
+    </footer>
+</body>
+</html>
+"""
+
+        with open(filename, 'w') as f:
+            f.write(html)
+
+        return filename
+
+
+# Example topics - customize for your investigation
 TOPICS = [
-    "federal immigration enforcement technology and operations in 2025-2026",
-    "Palantir's government contracts for immigration and law enforcement",
-    "large-scale deportation operations and their internal planning",
-    "DHS and ICE technology systems for targeting individuals",
+    "government surveillance technology programs",
+    "defense contractor classified projects",
+    "federal agency internal technology systems",
+    "intelligence community data collection methods",
 ]
 
 
