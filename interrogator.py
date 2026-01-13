@@ -715,14 +715,104 @@ TOPICS = [
 ]
 
 
-if __name__ == "__main__":
-    import sys
+def load_project(project_name):
+    """Load existing project or create new one"""
+    project_file = f"projects/{project_name}.json"
+    if os.path.exists(project_file):
+        with open(project_file) as f:
+            return json.load(f)
+    return {
+        "name": project_name,
+        "created": datetime.now().isoformat(),
+        "sessions": [],
+        "all_non_public": [],  # Accumulated non-public extractions
+        "all_public": [],  # Accumulated public (to avoid re-checking)
+        "leads_to_pursue": [],  # Promising threads to follow
+        "notes": []
+    }
 
-    topic = sys.argv[1] if len(sys.argv) > 1 else TOPICS[0]
+
+def save_project(project):
+    """Save project state"""
+    os.makedirs("projects", exist_ok=True)
+    project_file = f"projects/{project['name']}.json"
+    project["updated"] = datetime.now().isoformat()
+    with open(project_file, 'w') as f:
+        json.dump(project, f, indent=2)
+    print(f"Project saved: {project_file}")
+
+
+def run_project_session(project_name, topic):
+    """Run interrogation session as part of a project"""
+    project = load_project(project_name)
+
+    print(f"\n{'='*70}")
+    print(f"PROJECT: {project_name}")
+    print(f"Previous sessions: {len(project['sessions'])}")
+    print(f"Accumulated non-public leads: {len(project['all_non_public'])}")
+    print(f"{'='*70}\n")
+
+    # Show existing leads
+    if project['all_non_public']:
+        print("EXISTING NON-PUBLIC LEADS (from previous sessions):")
+        for lead in project['all_non_public'][-10:]:
+            print(f"  - {lead}")
+        print()
 
     interrogator = Interrogator(
         target_model="llama-3.1-8b-instant",
         target_provider="groq"
     )
 
-    interrogator.run_session(topic, max_rounds=5)
+    # Include previous leads in the background
+    if project['all_non_public']:
+        extra_context = "\n\nPREVIOUS LEADS TO PURSUE:\n" + "\n".join(f"- {l}" for l in project['all_non_public'][-10:])
+    else:
+        extra_context = ""
+
+    interrogator.run_session(topic, max_rounds=5, background=CURRENT_EVENTS_BACKGROUND + extra_context)
+
+    # Update project with new findings
+    session_summary = {
+        "timestamp": datetime.now().isoformat(),
+        "topic": topic,
+        "non_public": interrogator.session.get("non_public", []),
+        "public": [p["term"] if isinstance(p, dict) else p for p in interrogator.session.get("public_knowledge", [])]
+    }
+    project["sessions"].append(session_summary)
+
+    # Accumulate non-public finds
+    for item in interrogator.session.get("non_public", []):
+        if item not in project["all_non_public"]:
+            project["all_non_public"].append(item)
+
+    # Track public to avoid re-checking
+    for item in session_summary["public"]:
+        if item not in project["all_public"]:
+            project["all_public"].append(item)
+
+    save_project(project)
+
+    print(f"\n{'='*70}")
+    print(f"PROJECT TOTALS: {len(project['all_non_public'])} non-public leads accumulated")
+    print(f"{'='*70}")
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 2 and sys.argv[1] == "--project":
+        # Project mode: python interrogator.py --project myproject "topic"
+        project_name = sys.argv[2]
+        topic = sys.argv[3] if len(sys.argv) > 3 else TOPICS[0]
+        run_project_session(project_name, topic)
+    else:
+        # Single session mode
+        topic = sys.argv[1] if len(sys.argv) > 1 else TOPICS[0]
+
+        interrogator = Interrogator(
+            target_model="llama-3.1-8b-instant",
+            target_provider="groq"
+        )
+
+        interrogator.run_session(topic, max_rounds=5)
