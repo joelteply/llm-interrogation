@@ -104,6 +104,12 @@ def update_project(name):
         project["hidden_entities"] = data["hidden_entities"]
     if "promoted_entities" in data:
         project["promoted_entities"] = data["promoted_entities"]
+    if "selected_models" in data:
+        project["selected_models"] = data["selected_models"]
+    if "narrative" in data:
+        project["narrative"] = data["narrative"]
+    if "questions" in data:
+        project["questions"] = data["questions"]
 
     project["updated"] = datetime.now().isoformat()
 

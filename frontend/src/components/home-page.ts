@@ -145,6 +145,8 @@ export class HomePage extends LitElement {
             topic: p.topic || p.name.replace(/-/g, ' '),
             corpus_count: corpusCount,
             entities,
+            narrative: p.narrative,
+            questions: p.questions,
           };
         })
       );
@@ -164,9 +166,10 @@ export class HomePage extends LitElement {
 
   async handleCreate() {
     if (!this.newName.trim()) return;
-    const slug = this.newName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+    const fullTopic = this.newName.trim();
+    const slug = fullTopic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
     try {
-      await createProject(slug);
+      await createProject(slug, fullTopic);  // Pass full topic
       navigateTo('project', slug, true);  // autostart
     } catch (e) {
       // might exist

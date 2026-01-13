@@ -8,6 +8,8 @@ export class QuestionQueue extends LitElement {
   static styles = css`
     :host {
       display: block;
+      height: 100%;
+      overflow: hidden;
     }
 
     .card {
@@ -15,6 +17,11 @@ export class QuestionQueue extends LitElement {
       border: 1px solid var(--border-default, #30363d);
       border-radius: 8px;
       padding: 16px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      max-height: 100%;
+      overflow: hidden;
     }
 
     .header {
@@ -22,6 +29,7 @@ export class QuestionQueue extends LitElement {
       align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
+      flex-shrink: 0;
     }
 
     h3 {
@@ -47,6 +55,9 @@ export class QuestionQueue extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 8px;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
     }
 
     .question-item {
@@ -155,6 +166,7 @@ export class QuestionQueue extends LitElement {
       margin-bottom: 12px;
       padding-bottom: 12px;
       border-bottom: 1px solid var(--border-muted, #21262d);
+      flex-shrink: 0;
     }
 
     .add-question input {
@@ -282,21 +294,17 @@ export class QuestionQueue extends LitElement {
           <span class="count">${questions.length} questions</span>
         </div>
 
-        ${!isRunning
-          ? html`
-              <div class="add-question">
-                <input
-                  type="text"
-                  placeholder="Add a custom question..."
-                  .value=${this.newQuestion}
-                  @input=${(e: Event) =>
-                    (this.newQuestion = (e.target as HTMLInputElement).value)}
-                  @keydown=${this.handleKeydown}
-                />
-                <button @click=${this.addQuestion}>Add</button>
-              </div>
-            `
-          : null}
+        <div class="add-question">
+          <input
+            type="text"
+            placeholder="Add a custom question..."
+            .value=${this.newQuestion}
+            @input=${(e: Event) =>
+              (this.newQuestion = (e.target as HTMLInputElement).value)}
+            @keydown=${this.handleKeydown}
+          />
+          <button @click=${this.addQuestion}>Add</button>
+        </div>
 
         <div class="questions">
           ${questions.map(

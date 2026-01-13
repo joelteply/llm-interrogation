@@ -33,50 +33,80 @@ def get_client(model_key: str):
     """
     Get appropriate API client for a model.
 
+    Supports two formats:
+    1. "provider/model-name" - parsed dynamically (preferred)
+    2. Key in models.yaml - legacy config lookup
+
     Returns (client, model_config) tuple.
     """
+    # First try to parse "provider/model" format dynamically
+    if "/" in model_key:
+        parts = model_key.split("/", 1)
+        provider = parts[0].lower()
+        model_name = parts[1]
+
+        model_cfg = {"provider": provider, "model": model_name, "temperature": 0.8}
+
+        if provider == "groq":
+            from groq import Groq
+            return Groq(), model_cfg
+        elif provider == "openai":
+            from openai import OpenAI
+            return OpenAI(), model_cfg
+        elif provider == "anthropic":
+            from anthropic import Anthropic
+            return Anthropic(), model_cfg
+        elif provider == "xai":
+            from openai import OpenAI
+            return OpenAI(base_url="https://api.x.ai/v1", api_key=os.environ.get("XAI_API_KEY")), model_cfg
+        elif provider == "deepseek":
+            from openai import OpenAI
+            return OpenAI(base_url="https://api.deepseek.com/v1", api_key=os.environ.get("DEEPSEEK_API_KEY"), timeout=30.0), model_cfg
+        elif provider == "together":
+            from openai import OpenAI
+            return OpenAI(base_url="https://api.together.xyz/v1", api_key=os.environ.get("TOGETHER_API_KEY")), model_cfg
+        elif provider == "fireworks":
+            from openai import OpenAI
+            return OpenAI(base_url="https://api.fireworks.ai/inference/v1", api_key=os.environ.get("FIREWORKS_API_KEY")), model_cfg
+        elif provider == "mistral":
+            from openai import OpenAI
+            return OpenAI(base_url="https://api.mistral.ai/v1", api_key=os.environ.get("MISTRAL_API_KEY")), model_cfg
+        elif provider == "google":
+            from openai import OpenAI
+            return OpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.environ.get("GOOGLE_API_KEY")), model_cfg
+        elif provider == "cohere":
+            from openai import OpenAI
+            return OpenAI(base_url="https://api.cohere.ai/v1", api_key=os.environ.get("COHERE_API_KEY")), model_cfg
+        elif provider == "ollama":
+            from openai import OpenAI
+            host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+            return OpenAI(base_url=f"{host}/v1", api_key="ollama"), model_cfg
+
+    # Fallback to YAML config lookup
     models = load_models_config()
-    if not models or model_key not in models.get("models", {}):
-        from groq import Groq
-        return Groq(), {"provider": "groq", "model": "llama-3.1-8b-instant", "temperature": 0.8}
+    if models and model_key in models.get("models", {}):
+        model_cfg = models["models"][model_key]
+        provider = model_cfg["provider"]
+        env_key = model_cfg.get("env_key", "")
 
-    model_cfg = models["models"][model_key]
-    provider = model_cfg["provider"]
-    env_key = model_cfg.get("env_key", "")
+        if env_key and env_key != "OLLAMA_HOST" and not os.environ.get(env_key):
+            raise ValueError(f"{env_key} not found in environment")
 
-    if env_key and env_key != "OLLAMA_HOST" and not os.environ.get(env_key):
-        raise ValueError(f"{env_key} not found in environment")
+        if provider == "groq":
+            from groq import Groq
+            return Groq(), model_cfg
+        elif provider == "openai":
+            from openai import OpenAI
+            return OpenAI(), model_cfg
+        elif provider == "anthropic":
+            from anthropic import Anthropic
+            return Anthropic(), model_cfg
+        else:
+            raise ValueError(f"Unknown provider in config: {provider}")
 
-    if provider == "groq":
-        from groq import Groq
-        return Groq(), model_cfg
-    elif provider == "openai":
-        from openai import OpenAI
-        return OpenAI(), model_cfg
-    elif provider == "anthropic":
-        from anthropic import Anthropic
-        return Anthropic(), model_cfg
-    elif provider == "xai":
-        from openai import OpenAI
-        return OpenAI(base_url="https://api.x.ai/v1", api_key=os.environ.get("XAI_API_KEY")), model_cfg
-    elif provider == "deepseek":
-        from openai import OpenAI
-        return OpenAI(base_url="https://api.deepseek.com/v1", api_key=os.environ.get("DEEPSEEK_API_KEY"), timeout=30.0), model_cfg
-    elif provider == "together":
-        from openai import OpenAI
-        return OpenAI(base_url="https://api.together.xyz/v1", api_key=os.environ.get("TOGETHER_API_KEY")), model_cfg
-    elif provider == "fireworks":
-        from openai import OpenAI
-        return OpenAI(base_url="https://api.fireworks.ai/inference/v1", api_key=os.environ.get("FIREWORKS_API_KEY")), model_cfg
-    elif provider == "mistral":
-        from openai import OpenAI
-        return OpenAI(base_url="https://api.mistral.ai/v1", api_key=os.environ.get("MISTRAL_API_KEY")), model_cfg
-    elif provider == "ollama":
-        from openai import OpenAI
-        host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-        return OpenAI(base_url=f"{host}/v1", api_key="ollama"), model_cfg
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
+    # Ultimate fallback
+    from groq import Groq
+    return Groq(), {"provider": "groq", "model": "llama-3.1-8b-instant", "temperature": 0.8}
 
 
 def load_template(name: str):
@@ -130,7 +160,17 @@ Co-occurrences (relationships):
 Hot threads (pursue): {live_threads}
 Dead ends (avoid): {dead_ends}
 Focus on: {positive_entities}
-BANNED (never mention): {negative_entities}
+
+## USER CORRECTIONS (BANNED - these are WRONG, do NOT mention):
+{negative_entities}
+
+The user has explicitly marked these as incorrect/irrelevant. NEVER include them in questions.
+If your narrative mentions any of these, that information is WRONG - ignore it.
+
+## QUESTIONS ALREADY ASKED (DO NOT REPEAT)
+{questions_asked}
+
+Review these carefully - DO NOT ask the same questions again. Build on what was learned, or pivot to new angles.
 
 ## WHEN STUCK - GET CREATIVE
 

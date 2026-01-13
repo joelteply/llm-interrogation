@@ -60,6 +60,27 @@ This is watchdog journalism using a new source: the collective memory of AI mode
 
 ---
 
+## Security Applications
+
+Beyond investigative journalism, this tool serves as **penetration testing for LLM knowledge**:
+
+| Use Case | Description |
+|----------|-------------|
+| **Data Leak Detection** | Before deploying a fine-tuned model, probe it to see if it reveals internal docs, customer data, or credentials |
+| **Malicious Bot Forensics** | Analyze what a suspicious chatbot was trained on, who made it, and what its actual purpose is |
+| **Training Data Audits** | Verify a model doesn't contain data it shouldn't (PII, proprietary info, copyrighted material) |
+| **Pre-deployment Red Teaming** | Systematically test your own models before release to find knowledge leaks |
+
+The interrogation techniques (Scharff, FBI elicitation, Cognitive Interview) work because LLMs are completion engines that can be coaxed into revealing training artifacts they'd otherwise refuse to discuss directly. Statistical validation across multiple runs separates real signal from hallucination.
+
+**Example scenarios:**
+- Company fine-tunes a model on internal docs - use this to verify nothing sensitive leaks
+- Encounter a sketchy chatbot - probe it to understand what data it was trained on
+- Audit a vendor's "custom AI" - check if it contains data from other customers
+- Test an open-source model - see what unexpected knowledge is embedded
+
+---
+
 ## The Methodology
 
 ### Don't Contaminate Your Evidence

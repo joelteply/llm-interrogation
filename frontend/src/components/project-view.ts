@@ -154,6 +154,8 @@ export class ProjectView extends LitElement {
     .questions-column {
       position: sticky;
       top: 0;
+      max-height: calc(100vh - 380px);
+      overflow-y: auto;
     }
 
     .responses-column {
@@ -448,6 +450,28 @@ export class ProjectView extends LitElement {
       border-top: 1px solid #21262d;
     }
 
+    /* Error toast */
+    .error-toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(248, 81, 73, 0.95);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 1000;
+      animation: toast-in 0.3s ease-out;
+      box-shadow: 0 4px 16px rgba(248, 81, 73, 0.4);
+    }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
     .loading {
       display: flex;
       align-items: center;
@@ -524,11 +548,14 @@ export class ProjectView extends LitElement {
       }
 
       // Load hidden and promoted entities (negative/positive like Stable Diffusion)
+      // Also load saved models and questions
       probeState.update((s) => ({
         ...s,
         hiddenEntities: this.project!.hidden_entities || [],
         promotedEntities: this.project!.promoted_entities || [],
         narrative: this.project!.narrative || '',
+        selectedModels: this.project!.selected_models?.length ? this.project!.selected_models : s.selectedModels,
+        questions: this.project!.questions || [],
       }));
 
       // Load findings
@@ -563,6 +590,28 @@ export class ProjectView extends LitElement {
   @state()
   private binPressStart = 0;
 
+  @state()
+  private errorToast: string | null = null;
+
+  private showErrorToast(message: string) {
+    // Simplify error messages for common cases
+    let displayMsg = message;
+    if (message.includes('401') || message.includes('Unauthorized')) {
+      displayMsg = 'API key invalid or expired - check your keys';
+    } else if (message.includes('402') || message.includes('Payment')) {
+      displayMsg = 'API payment required - check billing';
+    } else if (message.includes('429') || message.includes('rate limit')) {
+      displayMsg = 'Rate limited - will retry with other models';
+    } else if (message.includes('500') || message.includes('Internal')) {
+      displayMsg = 'Model server error - continuing with others';
+    }
+
+    this.errorToast = displayMsg;
+    setTimeout(() => {
+      this.errorToast = null;
+    }, 5000);
+  }
+
   private _abortController: AbortController | null = null;
 
   private async handlePreview() {
@@ -579,7 +628,12 @@ export class ProjectView extends LitElement {
         Object.keys(state.findings?.entities || {}).slice(0, 20),
         this.projectName || undefined  // Pass project for banned/promoted entity context
       );
-      probeState.update(s => ({ ...s, questions: result.questions as GeneratedQuestion[], isGenerating: false }));
+      const questions = result.questions as GeneratedQuestion[];
+      probeState.update(s => ({ ...s, questions, isGenerating: false }));
+      // Persist questions to project
+      if (this.projectName) {
+        updateProject(this.projectName, { questions });
+      }
     } catch (err) {
       console.error('Failed to generate questions:', err);
       probeState.update(s => ({ ...s, isGenerating: false }));
@@ -642,6 +696,12 @@ export class ProjectView extends LitElement {
           // Interrogator's updated working theory
           const text = (event.data as any)?.text || (event as any).text || '';
           probeState.update(s => ({ ...s, narrative: text }));
+        } else if (event.type === 'error') {
+          // Model or API error - log but keep running
+          const msg = (event as any).message || (event.data as any)?.message || 'Unknown error';
+          console.warn('Probe error (continuing):', msg);
+          // Show brief toast-like notification, don't stop the probe
+          this.showErrorToast(msg);
         } else if (event.type === 'complete') {
           probeState.update(s => ({ ...s, isRunning: false }));
           this._abortController = null;
@@ -868,6 +928,11 @@ export class ProjectView extends LitElement {
       <div class="config-drawer ${this.showConfig ? 'open' : ''}">
         <probe-controls .projectName=${this.projectName}></probe-controls>
       </div>
+
+      <!-- Error toast -->
+      ${this.errorToast ? html`
+        <div class="error-toast">${this.errorToast}</div>
+      ` : null}
     `;
   }
 }

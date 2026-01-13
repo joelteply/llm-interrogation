@@ -342,7 +342,7 @@ export class FindingsPanel extends LitElement {
         hiddenEntities: [...s.hiddenEntities, entity],
         promotedEntities: s.promotedEntities.filter(e => e !== entity)  // Remove from positives if was there
       }));
-    } else if (action === 'demote') {
+    } else if (action === 'demote' || action === 'unpromote') {
       // Remove from promoted if it was there
       probeState.update(s => ({
         ...s,
@@ -486,6 +486,7 @@ export class FindingsPanel extends LitElement {
               .entities=${this.getFilteredEntities()}
               .signalThreshold=${this.consistentThreshold}
               .promotedEntities=${this._probeState.promotedEntities}
+              .hiddenEntities=${this._probeState.hiddenEntities}
               .deadEnds=${this.findings?.dead_ends || []}
               .liveThreads=${this.findings?.live_threads || []}
               @entity-select=${this.handleEntitySelect}

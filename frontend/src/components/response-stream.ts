@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { probeState, type ProbeState } from '../state';
-import { getTranscript, type TranscriptQuestion } from '../api';
+import { getTranscript, updateProject, type TranscriptQuestion } from '../api';
 import type { ProbeResponse } from '../types';
 import { AVAILABLE_MODELS } from '../types';
 
@@ -112,9 +112,15 @@ export class ResponseStream extends LitElement {
       color: #f85149;
     }
 
-    .model-tag.groq { border-color: rgba(251, 146, 60, 0.4); }
+    .model-tag.groq { border-color: rgba(63, 185, 80, 0.4); }
     .model-tag.deepseek { border-color: rgba(88, 166, 255, 0.4); }
-    .model-tag.openai { border-color: rgba(16, 185, 129, 0.4); }
+    .model-tag.openai { border-color: rgba(163, 113, 247, 0.4); }
+    .model-tag.anthropic { border-color: rgba(212, 165, 116, 0.4); }
+    .model-tag.xai { border-color: rgba(248, 81, 73, 0.4); }
+    .model-tag.mistral { border-color: rgba(255, 123, 0, 0.4); }
+    .model-tag.google { border-color: rgba(66, 133, 244, 0.4); }
+    .model-tag.together { border-color: rgba(232, 121, 249, 0.4); }
+    .model-tag.cohere { border-color: rgba(57, 211, 83, 0.4); }
 
     .add-model-btn {
       display: flex;
@@ -269,6 +275,54 @@ export class ResponseStream extends LitElement {
       white-space: pre-wrap;
       max-height: 150px;
       overflow-y: auto;
+      cursor: pointer;
+    }
+
+    .narrative-content:hover {
+      background: rgba(63, 185, 80, 0.05);
+      border-radius: 4px;
+      margin: -4px;
+      padding: 4px;
+    }
+
+    .narrative-edit {
+      width: 100%;
+      min-height: 250px;
+      max-height: 60vh;
+      padding: 12px;
+      background: #0d1117;
+      border: 1px solid rgba(63, 185, 80, 0.4);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      color: #c9d1d9;
+      line-height: 1.6;
+      resize: vertical;
+    }
+
+    .narrative-edit:focus {
+      outline: none;
+      border-color: #3fb950;
+      box-shadow: 0 0 0 2px rgba(63, 185, 80, 0.2);
+    }
+
+    .narrative-header {
+      cursor: pointer;
+    }
+
+    .narrative-header:hover {
+      color: #56d364;
+    }
+
+    .running-indicator {
+      margin-left: 8px;
+      color: #f85149;
+      animation: blink 1s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
     }
 
     @keyframes glow-pulse {
@@ -418,6 +472,12 @@ export class ResponseStream extends LitElement {
     .model-indicator.groq { background: #3fb950; box-shadow: 0 0 8px rgba(63, 185, 80, 0.5); }
     .model-indicator.deepseek { background: #58a6ff; box-shadow: 0 0 8px rgba(88, 166, 255, 0.5); }
     .model-indicator.openai { background: #a371f7; box-shadow: 0 0 8px rgba(163, 113, 247, 0.5); }
+    .model-indicator.anthropic { background: #d4a574; box-shadow: 0 0 8px rgba(212, 165, 116, 0.5); }
+    .model-indicator.xai { background: #f85149; box-shadow: 0 0 8px rgba(248, 81, 73, 0.5); }
+    .model-indicator.mistral { background: #ff7b00; box-shadow: 0 0 8px rgba(255, 123, 0, 0.5); }
+    .model-indicator.google { background: #4285f4; box-shadow: 0 0 8px rgba(66, 133, 244, 0.5); }
+    .model-indicator.together { background: #e879f9; box-shadow: 0 0 8px rgba(232, 121, 249, 0.5); }
+    .model-indicator.cohere { background: #39d353; box-shadow: 0 0 8px rgba(57, 211, 83, 0.5); }
 
     .model-name {
       font-size: 12px;
@@ -515,6 +575,9 @@ export class ResponseStream extends LitElement {
   @state()
   private showModelDropdown = false;
 
+  @state()
+  private editingNarrative = false;
+
   private _unsubscribe?: () => void;
 
   private handleClickOutside = (e: MouseEvent) => {
@@ -560,7 +623,7 @@ export class ResponseStream extends LitElement {
     document.removeEventListener('click', this.handleClickOutside);
   }
 
-  private removeModel(model: string) {
+  private async removeModel(model: string) {
     const current = probeState.get();
     const remaining = current.selectedModels.filter(m => m !== model);
 
@@ -579,22 +642,56 @@ export class ResponseStream extends LitElement {
         selectedModels: remaining
       }));
     }
+    // Save to project
+    if (this.projectName) {
+      updateProject(this.projectName, { selected_models: remaining });
+    }
   }
 
-  private addModel(model: string) {
+  private async addModel(model: string) {
+    const newModels = probeState.get().selectedModels.includes(model)
+      ? probeState.get().selectedModels
+      : [...probeState.get().selectedModels, model];
+
     probeState.update(s => ({
       ...s,
-      selectedModels: s.selectedModels.includes(model)
-        ? s.selectedModels
-        : [...s.selectedModels, model]
+      selectedModels: newModels
     }));
     this.showModelDropdown = false;
+
+    // Save to project
+    if (this.projectName) {
+      updateProject(this.projectName, { selected_models: newModels });
+    }
+  }
+
+  private async saveNarrative(e: Event) {
+    const textarea = e.target as HTMLTextAreaElement;
+    const newNarrative = textarea.value;
+
+    probeState.update(s => ({
+      ...s,
+      narrative: newNarrative
+    }));
+
+    this.editingNarrative = false;
+
+    // Save to project
+    if (this.projectName) {
+      updateProject(this.projectName, { narrative: newNarrative });
+    }
   }
 
   private getModelProvider(model: string): string {
     if (model.includes('groq')) return 'groq';
     if (model.includes('deepseek')) return 'deepseek';
     if (model.includes('openai')) return 'openai';
+    if (model.includes('anthropic') || model.includes('claude')) return 'anthropic';
+    if (model.includes('xai') || model.includes('grok')) return 'xai';
+    if (model.includes('mistral')) return 'mistral';
+    if (model.includes('google') || model.includes('gemini')) return 'google';
+    if (model.includes('together') || model.includes('meta-llama')) return 'together';
+    if (model.includes('cohere') || model.includes('command')) return 'cohere';
     return 'other';
   }
 
@@ -688,17 +785,24 @@ export class ResponseStream extends LitElement {
         </div>
 
         <div class="content">
-          ${this._probeState.narrative ? html`
-            <div class="narrative-box">
-              <div class="narrative-header">📓 Working Theory</div>
-              <div class="narrative-content">${this._probeState.narrative}</div>
+          <!-- Always show narrative box so user can add corrections/notes -->
+          <div class="narrative-box">
+            <div class="narrative-header" @click=${() => this.editingNarrative = !this.editingNarrative}>
+              📓 Working Theory ${this.editingNarrative ? '(editing)' : '(click to edit)'}
+              ${isRunning ? html`<span class="running-indicator">● Live</span>` : ''}
             </div>
-          ` : isRunning ? html`
-            <div class="running-banner">
-              <div class="spinner"></div>
-              <span class="running-text">Interrogating subjects...</span>
-            </div>
-          ` : null}
+            ${this.editingNarrative ? html`
+              <textarea
+                class="narrative-edit"
+                .value=${this._probeState.narrative || ''}
+                @blur=${this.saveNarrative}
+                @keydown=${(e: KeyboardEvent) => { if (e.key === 'Escape') this.editingNarrative = false; }}
+                placeholder="Add your notes, corrections, or working theory here. Mark things as WRONG or FALSE if the AI hallucinates. This helps guide the interrogation."
+              ></textarea>
+            ` : html`
+              <div class="narrative-content">${this._probeState.narrative || 'Click to add notes, corrections, or your own working theory...'}</div>
+            `}
+          </div>
 
           ${!hasCurrentSession && !hasPastData && !isRunning && !this.isLoadingTranscript ? html`
             <div class="empty">

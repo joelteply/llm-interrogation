@@ -208,6 +208,12 @@ export class WordCloud extends LitElement {
   @state()
   private pressStartTime = 0;
 
+  @state()
+  private longPressTimer: number | null = null;
+
+  @property({ type: Array })
+  hiddenEntities: string[] = [];  // Banned entities (for count display)
+
   private resizeObserver: ResizeObserver | null = null;
 
   private colors = {
@@ -441,14 +447,38 @@ export class WordCloud extends LitElement {
     e.preventDefault();
     this.pressStartTime = Date.now();
     this.selectedWord = word;
+
+    // Start long press timer for ban (500ms)
+    this.longPressTimer = window.setTimeout(() => {
+      // Long press = BAN (same as right click)
+      this.dispatchEvent(new CustomEvent('entity-select', {
+        detail: { entity: word, action: 'delete', count: this.entities[word] },
+        bubbles: true, composed: true
+      }));
+      this.selectedWord = null;
+      this.pressStartTime = 0;
+      this.longPressTimer = null;
+    }, 500);
   }
 
   private handleWordMouseUp(word: string, e: MouseEvent) {
     e.preventDefault();
 
-    // Left click = promote/focus
+    // Cancel long press timer
+    if (this.longPressTimer) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+
+    // If we already handled via long press, skip
+    if (this.pressStartTime === 0) return;
+
+    // Left click = toggle promote/focus
+    const isPromoted = this.promotedEntities.includes(word);
+    const action = isPromoted ? 'unpromote' : 'promote';
+
     this.dispatchEvent(new CustomEvent('entity-select', {
-      detail: { entity: word, action: 'promote', count: this.entities[word] },
+      detail: { entity: word, action, count: this.entities[word] },
       bubbles: true, composed: true
     }));
 
@@ -491,7 +521,7 @@ export class WordCloud extends LitElement {
                     @mousedown=${(e: MouseEvent) => this.handleWordMouseDown(word.text, e)}
                     @mouseup=${(e: MouseEvent) => this.handleWordMouseUp(word.text, e)}
                     @contextmenu=${(e: MouseEvent) => this.handleWordRightClick(word.text, e)}
-                    @mouseleave=${() => { this.selectedWord = null; this.pressStartTime = 0; }}
+                    @mouseleave=${() => { this.selectedWord = null; this.pressStartTime = 0; if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; } }}
                   >
                     ${word.text}
                   </span>
@@ -502,7 +532,8 @@ export class WordCloud extends LitElement {
         <div class="stats-bar">
           <div class="legend">
             <span style="color: #6e7681;">Click: focus</span>
-            <span style="color: #6e7681;">Right-click: BAN</span>
+            <span style="color: #3fb950;">Again: unfocus</span>
+            <span style="color: #f85149;">Hold/Right: BAN</span>
             <div class="temp-scale">
               <span class="temp-label">cold</span>
               <div class="temp-gradient"></div>
@@ -510,7 +541,7 @@ export class WordCloud extends LitElement {
             </div>
           </div>
           <div>
-            ${this.liveThreads.length} live / ${this.deadEnds.length} dead / ${signalCount} signal
+            ${this.liveThreads.length} live / ${this.deadEnds.length} dead / ${signalCount} signal${this.hiddenEntities.length > 0 ? html` / <span style="color: #f85149;">${this.hiddenEntities.length} banned</span>` : ''}
           </div>
         </div>
       </div>

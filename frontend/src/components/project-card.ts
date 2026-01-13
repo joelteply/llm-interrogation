@@ -7,6 +7,8 @@ export interface ProjectCardData {
   topic?: string;
   corpus_count: number;
   entities: Record<string, number>;
+  narrative?: string;
+  questions?: Array<{ question: string; technique?: string }>;
 }
 
 @customElement('project-card')
@@ -264,6 +266,83 @@ export class ProjectCard extends LitElement {
       font-weight: 600;
       color: #8b949e;
     }
+
+    /* Working Theory / Narrative */
+    .narrative-section {
+      background: rgba(63, 185, 80, 0.08);
+      border: 1px solid rgba(63, 185, 80, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .narrative-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #3fb950;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .narrative-text {
+      font-size: 14px;
+      color: #c9d1d9;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Questions Queue */
+    .questions-section {
+      background: rgba(88, 166, 255, 0.08);
+      border: 1px solid rgba(88, 166, 255, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .questions-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #58a6ff;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .question-item {
+      font-size: 13px;
+      color: #c9d1d9;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .question-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .question-more {
+      font-size: 12px;
+      color: #6e7681;
+      text-align: center;
+      padding-top: 4px;
+    }
   `;
 
   @property({ type: Object }) data!: ProjectCardData;
@@ -321,6 +400,25 @@ export class ProjectCard extends LitElement {
               .signalThreshold=${3}
             ></word-cloud>
           </div>
+
+          ${this.data.narrative ? html`
+            <div class="narrative-section">
+              <div class="narrative-label">📓 Working Theory</div>
+              <div class="narrative-text">${this.data.narrative}</div>
+            </div>
+          ` : null}
+
+          ${this.data.questions?.length ? html`
+            <div class="questions-section">
+              <div class="questions-label">❓ Question Queue (${this.data.questions.length})</div>
+              ${this.data.questions.slice(0, 3).map(q => html`
+                <div class="question-item">"${q.question}"</div>
+              `)}
+              ${this.data.questions.length > 3 ? html`
+                <div class="question-more">+${this.data.questions.length - 3} more questions</div>
+              ` : null}
+            </div>
+          ` : null}
 
           <div class="signals-grid">
             ${signals.map(([name, count]) => html`

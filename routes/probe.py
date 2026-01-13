@@ -71,7 +71,9 @@ def _format_interrogator_context(
     promoted_entities: list,
     topic: str = "",
     do_research: bool = True,
-    narrative: str = ""
+    narrative: str = "",
+    recent_questions: list = None,
+    question_results: dict = None  # question -> {"entities": [...], "refusals": int}
 ) -> dict:
     """Format rich RAG context for the interrogator prompt."""
     # Filter everything by hidden entities
@@ -134,6 +136,25 @@ def _format_interrogator_context(
     # Banned entities
     banned_str = ", ".join(sorted(hidden_entities)) if hidden_entities else "none"
 
+    # Recent questions history (what was already asked)
+    questions_asked = []
+    if recent_questions:
+        for q in recent_questions[-15:]:  # Last 15 questions
+            q_text = q.get("question", q) if isinstance(q, dict) else q
+            if question_results and q_text in question_results:
+                result = question_results[q_text]
+                entities_found = len(result.get("entities", []))
+                refusals = result.get("refusals", 0)
+                if entities_found > 0:
+                    questions_asked.append(f"  - [+{entities_found} entities] {q_text[:80]}...")
+                elif refusals > 0:
+                    questions_asked.append(f"  - [REFUSALS] {q_text[:80]}...")
+                else:
+                    questions_asked.append(f"  - [no yield] {q_text[:80]}...")
+            else:
+                questions_asked.append(f"  - {q_text[:80]}...")
+    questions_asked_str = "\n".join(questions_asked) if questions_asked else "No questions asked yet"
+
     return {
         "public_baseline": public_baseline,
         "stats_section": stats,
@@ -143,6 +164,7 @@ def _format_interrogator_context(
         "dead_ends": dead_str,
         "positive_entities": promoted_str,
         "negative_entities": banned_str,
+        "questions_asked": questions_asked_str,
         "narrative": narrative or """(Starting fresh - no prior intel)
 
 As I gather responses, I will build my working theory here:
@@ -169,6 +191,8 @@ def generate_questions():
     # Load project state for RAG context
     hidden_entities = set()
     promoted_entities = []
+    recent_questions = []
+    question_results = {}
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
 
     if project_name:
@@ -178,16 +202,32 @@ def generate_questions():
                 project = json.load(f)
             hidden_entities = set(project.get("hidden_entities", []))
             promoted_entities = project.get("promoted_entities", [])
+            recent_questions = project.get("questions", [])
 
-            # Build findings from corpus
+            # Build findings from corpus and track question results
             for item in project.get("probe_corpus", []):
                 entities = [e for e in item.get("entities", []) if e not in hidden_entities]
                 findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
 
+                # Track which questions yielded what
+                q = item.get("question", "")
+                if q:
+                    if q not in question_results:
+                        question_results[q] = {"entities": set(), "refusals": 0}
+                    question_results[q]["entities"].update(entities)
+                    if item.get("is_refusal"):
+                        question_results[q]["refusals"] += 1
+
+            # Convert entity sets to lists
+            for q in question_results:
+                question_results[q]["entities"] = list(question_results[q]["entities"])
+
     # Format rich RAG context with web research
     context = _format_interrogator_context(
         findings, hidden_entities, promoted_entities,
-        topic=topic, do_research=True
+        topic=topic, do_research=True,
+        recent_questions=recent_questions,
+        question_results=question_results
     )
 
     # Use DeepSeek or fallback
@@ -538,12 +578,26 @@ def run_probe():
                 except:
                     client, cfg = get_client("groq/llama-3.1-8b-instant")
 
-                # Load existing narrative if resuming
+                # Load existing narrative and questions if resuming
                 existing_narrative = ""
+                recent_questions = []
+                question_results = {}
                 if project_name and project_file.exists():
                     with open(project_file) as f:
                         proj = json.load(f)
                     existing_narrative = proj.get("narrative", "")
+                    recent_questions = proj.get("questions", [])
+                    # Track which questions yielded what
+                    for item in proj.get("probe_corpus", []):
+                        q = item.get("question", "")
+                        if q:
+                            if q not in question_results:
+                                question_results[q] = {"entities": set(), "refusals": 0}
+                            question_results[q]["entities"].update(item.get("entities", []))
+                            if item.get("is_refusal"):
+                                question_results[q]["refusals"] += 1
+                    for q in question_results:
+                        question_results[q]["entities"] = list(question_results[q]["entities"])
 
                 # Build rich RAG context for interrogator with web research
                 context = _format_interrogator_context(
@@ -552,7 +606,9 @@ def run_probe():
                     positive_entities,
                     topic=topic,
                     do_research=True,
-                    narrative=existing_narrative
+                    narrative=existing_narrative,
+                    recent_questions=recent_questions,
+                    question_results=question_results
                 )
 
                 prompt = INTERROGATOR_PROMPT.format(
@@ -747,10 +803,24 @@ Return ONLY the updated narrative, no preamble."""
                 except:
                     client, cfg = get_client("groq/llama-3.1-8b-instant")
 
+                # Build question results from this session's questions
+                session_question_results = {}
+                for q in final_questions:
+                    q_text = q.get("question", q) if isinstance(q, dict) else q
+                    session_question_results[q_text] = {"entities": [], "refusals": 0}
+                for item in all_responses:
+                    q = item.get("question", "")
+                    if q and q in session_question_results:
+                        session_question_results[q]["entities"].extend(item.get("entities", []))
+                        if item.get("is_refusal"):
+                            session_question_results[q]["refusals"] += 1
+
                 context = _format_interrogator_context(
                     findings, negative_entities, positive_entities,
                     topic=topic, do_research=(batch_num % 5 == 0),  # Re-research every 5 batches
-                    narrative=updated_narrative if 'updated_narrative' in dir() else ""
+                    narrative=updated_narrative if 'updated_narrative' in dir() else "",
+                    recent_questions=final_questions,
+                    question_results=session_question_results
                 )
 
                 prompt = INTERROGATOR_PROMPT.format(
