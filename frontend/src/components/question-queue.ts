@@ -152,9 +152,9 @@ export class QuestionQueue extends LitElement {
     .add-question {
       display: flex;
       gap: 8px;
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid var(--border-muted, #21262d);
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-muted, #21262d);
     }
 
     .add-question input {
@@ -235,7 +235,7 @@ export class QuestionQueue extends LitElement {
 
     probeState.update((s) => ({
       ...s,
-      questions: [...s.questions, question],
+      questions: [question, ...s.questions],
     }));
 
     this.newQuestion = '';
@@ -282,6 +282,22 @@ export class QuestionQueue extends LitElement {
           <span class="count">${questions.length} questions</span>
         </div>
 
+        ${!isRunning
+          ? html`
+              <div class="add-question">
+                <input
+                  type="text"
+                  placeholder="Add a custom question..."
+                  .value=${this.newQuestion}
+                  @input=${(e: Event) =>
+                    (this.newQuestion = (e.target as HTMLInputElement).value)}
+                  @keydown=${this.handleKeydown}
+                />
+                <button @click=${this.addQuestion}>Add</button>
+              </div>
+            `
+          : null}
+
         <div class="questions">
           ${questions.map(
             (q, i) => html`
@@ -315,22 +331,6 @@ export class QuestionQueue extends LitElement {
             `
           )}
         </div>
-
-        ${!isRunning
-          ? html`
-              <div class="add-question">
-                <input
-                  type="text"
-                  placeholder="Add a custom question..."
-                  .value=${this.newQuestion}
-                  @input=${(e: Event) =>
-                    (this.newQuestion = (e.target as HTMLInputElement).value)}
-                  @keydown=${this.handleKeydown}
-                />
-                <button @click=${this.addQuestion}>Add</button>
-              </div>
-            `
-          : null}
       </div>
     `;
   }

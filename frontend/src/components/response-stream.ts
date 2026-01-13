@@ -3,6 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { probeState, type ProbeState } from '../state';
 import { getTranscript, type TranscriptQuestion } from '../api';
 import type { ProbeResponse } from '../types';
+import { AVAILABLE_MODELS } from '../types';
 
 @customElement('response-stream')
 export class ResponseStream extends LitElement {
@@ -114,6 +115,71 @@ export class ResponseStream extends LitElement {
     .model-tag.groq { border-color: rgba(251, 146, 60, 0.4); }
     .model-tag.deepseek { border-color: rgba(88, 166, 255, 0.4); }
     .model-tag.openai { border-color: rgba(16, 185, 129, 0.4); }
+
+    .add-model-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      background: #21262d;
+      border: 1px dashed #30363d;
+      border-radius: 4px;
+      color: #6e7681;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 150ms;
+    }
+
+    .add-model-btn:hover {
+      background: #30363d;
+      border-color: #58a6ff;
+      color: #58a6ff;
+    }
+
+    .model-dropdown {
+      position: relative;
+    }
+
+    .model-dropdown-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      z-index: 100;
+      min-width: 180px;
+    }
+
+    .model-option {
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #c9d1d9;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .model-option:hover {
+      background: #21262d;
+    }
+
+    .model-option:first-child {
+      border-radius: 6px 6px 0 0;
+    }
+
+    .model-option:last-child {
+      border-radius: 0 0 6px 6px;
+    }
+
+    .model-option .provider {
+      font-size: 10px;
+      color: #6e7681;
+    }
 
     .stats {
       display: flex;
@@ -405,13 +471,26 @@ export class ResponseStream extends LitElement {
   @state()
   private isLoadingTranscript = false;
 
+  @state()
+  private showModelDropdown = false;
+
   private _unsubscribe?: () => void;
+
+  private handleClickOutside = (e: MouseEvent) => {
+    if (this.showModelDropdown) {
+      const dropdown = this.shadowRoot?.querySelector('.model-dropdown');
+      if (dropdown && !dropdown.contains(e.target as Node)) {
+        this.showModelDropdown = false;
+      }
+    }
+  };
 
   connectedCallback() {
     super.connectedCallback();
     this._unsubscribe = probeState.subscribe((s) => {
       this._probeState = s;
     });
+    document.addEventListener('click', this.handleClickOutside);
     this.loadPastTranscript();
   }
 
@@ -437,13 +516,38 @@ export class ResponseStream extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._unsubscribe?.();
+    document.removeEventListener('click', this.handleClickOutside);
   }
 
   private removeModel(model: string) {
+    const current = probeState.get();
+    const remaining = current.selectedModels.filter(m => m !== model);
+
+    if (remaining.length === 0 && current.isRunning) {
+      // Stop the probe if we remove the last model
+      probeState.update(s => ({
+        ...s,
+        selectedModels: remaining,
+        isRunning: false
+      }));
+      // Dispatch stop event for parent to handle abort
+      this.dispatchEvent(new CustomEvent('stop-probe', { bubbles: true, composed: true }));
+    } else {
+      probeState.update(s => ({
+        ...s,
+        selectedModels: remaining
+      }));
+    }
+  }
+
+  private addModel(model: string) {
     probeState.update(s => ({
       ...s,
-      selectedModels: s.selectedModels.filter(m => m !== model)
+      selectedModels: s.selectedModels.includes(model)
+        ? s.selectedModels
+        : [...s.selectedModels, model]
     }));
+    this.showModelDropdown = false;
   }
 
   private getModelProvider(model: string): string {
@@ -506,6 +610,28 @@ export class ResponseStream extends LitElement {
                   </span>
                 `;
               })}
+              <div class="model-dropdown">
+                <button
+                  class="add-model-btn"
+                  @click=${() => this.showModelDropdown = !this.showModelDropdown}
+                  title="Add model"
+                >+</button>
+                ${this.showModelDropdown ? html`
+                  <div class="model-dropdown-menu">
+                    ${AVAILABLE_MODELS
+                      .filter(m => !this._probeState.selectedModels.includes(m.id))
+                      .map(m => html`
+                        <div class="model-option" @click=${() => this.addModel(m.id)}>
+                          <span>${m.name}</span>
+                          <span class="provider">${m.provider}</span>
+                        </div>
+                      `)}
+                    ${AVAILABLE_MODELS.filter(m => !this._probeState.selectedModels.includes(m.id)).length === 0 ? html`
+                      <div class="model-option" style="color: #6e7681; cursor: default;">All models selected</div>
+                    ` : null}
+                  </div>
+                ` : null}
+              </div>
             </div>
           </div>
           <div class="stats">
