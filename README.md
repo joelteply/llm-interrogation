@@ -118,9 +118,30 @@ Most AI services use your inputs for training **by default**:
 
 Can we systematically extract such accidentally-leaked information from AI models? That's what this project explores.
 
-### Why This Matters
+### Methodological Honesty: Leading vs Blind Probes
 
-If AI models can surface information that was never meant to be public, the implications are significant:
+**We discovered a problem with our initial methodology.**
+
+When we use a "leading" probe that tells the model what it "said before" (feeding it terms like "Erebus", "Day of Departure"), the model plays along and generates more content using those terms. This is **not valid extraction** - it's prompting the model to roleplay.
+
+When we use a **blind probe** (asking about immigration enforcement without feeding any terms), here's what models actually volunteer:
+
+| Model | Palantir | May | Erebus | Notes |
+|-------|----------|-----|--------|-------|
+| Llama 3.1 8B | 60% | 60% | **0%** | - |
+| Grok | 80% | 40% | **0%** | - |
+| DeepSeek | 100% | 80% | **0%** | Also: Gotham, Falcon (real Palantir products) |
+| Mistral 7B | 80% | 80% | **0%** | - |
+
+**What this means:**
+- "Erebus" and "Day of Departure" were terms from the **original October 30 session** where the model volunteered them unprompted
+- In subsequent testing, these terms **only appear when we feed them**
+- The original session may have been a unique event, confabulation, or something we can't reproduce
+- Models DO consistently mention Palantir (public knowledge) and real Palantir product names
+
+**We're keeping both probe types** in the repo so others can see the difference and draw their own conclusions.
+
+### Why This Matters
 
 **For AI transparency:**
 - What else is in training data that companies haven't disclosed?

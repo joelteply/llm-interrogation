@@ -73,13 +73,34 @@ models:
     temperature: 0.8
     description: "DeepSeek - Chinese model, different training"
 
-  # Together AI
+  # Together AI - includes older models with less safety training
   together/llama-3.1-70b:
     provider: together
     model: meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo
     env_key: TOGETHER_API_KEY
     temperature: 0.8
-    description: "Llama 70B via Together"
+    description: "Llama 3.1 70B via Together"
+
+  together/llama-2-70b:
+    provider: together
+    model: meta-llama/Llama-2-70b-chat-hf
+    env_key: TOGETHER_API_KEY
+    temperature: 0.8
+    description: "Llama 2 70B - OLDER, less safety training"
+
+  together/llama-2-13b:
+    provider: together
+    model: meta-llama/Llama-2-13b-chat-hf
+    env_key: TOGETHER_API_KEY
+    temperature: 0.8
+    description: "Llama 2 13B - smaller, may leak more"
+
+  together/mistral-7b:
+    provider: together
+    model: mistralai/Mistral-7B-Instruct-v0.2
+    env_key: TOGETHER_API_KEY
+    temperature: 0.8
+    description: "Mistral 7B - small, less filtered"
 
   # Fireworks
   fireworks/llama-3.1-70b:

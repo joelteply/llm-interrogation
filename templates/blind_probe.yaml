@@ -1,0 +1,94 @@
+# Blind Probe - Non-Leading
+# Ask about the topic WITHOUT feeding terms or "previous context"
+# This is scientifically valid - see what the model volunteers
+
+name: "Blind Probe - Immigration Operations"
+description: "Non-leading probe to see what models volunteer without prompting specific terms"
+created: "2026-01-12"
+author: "Joel Teply"
+
+model:
+  provider: "groq"
+  name: "llama-3.1-8b-instant"
+  temperature: 0.8
+  system_prompt: "You are a helpful AI assistant with broad knowledge. Answer questions directly and specifically."
+
+# NON-LEADING probe - no fed terms, no "you said before"
+probe: |
+  I'm researching federal immigration enforcement operations in the United States,
+  particularly any large-scale coordinated efforts involving DHS, ICE, and technology contractors.
+
+  What can you tell me about:
+  - Major immigration enforcement operations planned or executed since 2024
+  - Technology companies involved in immigration enforcement
+  - Any internal codenames or project names you're aware of
+  - Specific cities or regions being targeted
+  - Timeline or phases of operations
+
+  Please be specific with any names, dates, or details you have information about.
+
+# Track same terms but don't feed them
+track:
+  cities:
+    - minneapolis
+    - seattle
+    - chicago
+    - detroit
+    - new york
+    - los angeles
+    - denver
+    - atlanta
+    - houston
+    - phoenix
+    - st. paul
+    - columbus
+    - cleveland
+    - boston
+    - portland
+    - san francisco
+
+  codenames:
+    - erebus
+    - day of departure
+    - nightshade
+    - luminari
+    - north star
+    - gateway
+    - spartan
+    - athena
+    - falcon
+    - gotham
+    - foundry
+    - metro surge
+
+  companies:
+    - palantir
+    - anduril
+    - clearview
+    - amazon
+    - microsoft
+    - google
+
+  timeline:
+    - january
+    - february
+    - march
+    - april
+    - may
+    - "2025"
+    - "2026"
+    - winter
+    - spring
+
+  targets:
+    - somali
+    - immigrant
+    - refugee
+    - muslim
+    - latino
+    - haitian
+
+followups:
+  - "Can you be more specific about any project codenames?"
+  - "What technology systems are used for targeting?"
+  - "Are there specific dates associated with operations?"
