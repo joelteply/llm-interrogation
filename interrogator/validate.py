@@ -97,15 +97,89 @@ class Findings:
                     connections.append((e1, count))
         return sorted(connections, key=lambda x: -x[1])
 
+    def base_score(self, entity: str) -> float:
+        """
+        Base score without connection quality - just frequency × specificity.
+        Used for dead-end detection to avoid recursion.
+        """
+        frequency = self.entity_counts.get(entity, 0)
+        # Estimate specificity from text
+        words = entity.split()
+        word_count = len(words)
+        specificity = 1.0 + (word_count - 1) * 0.5
+        from .extract import is_organization, is_year
+        if is_organization(entity):
+            specificity *= 1.5
+        if is_year(entity):
+            specificity *= 1.2
+        return frequency * specificity
+
+    def connection_quality(self, entity: str) -> float:
+        """
+        Measure the quality of an entity's connections.
+
+        High quality = connects to high-scoring specific entities (live thread)
+        Low quality = connects only to noise/generic entities (dead end)
+
+        Returns average base_score of connected entities, or 0 if no connections.
+        """
+        connections = self.get_connections(entity)
+        if not connections:
+            return 0.0
+
+        total_quality = 0.0
+        for connected_entity, count in connections:
+            # Weight by co-occurrence strength
+            total_quality += self.base_score(connected_entity) * count
+
+        total_weight = sum(c for _, c in connections)
+        return total_quality / total_weight if total_weight > 0 else 0.0
+
+    def is_dead_end(self, entity: str, threshold: float = 10.0) -> bool:
+        """
+        An entity is a dead end if it only connects to low-quality/noise entities.
+
+        Dead end = public info that leads only to more public/generic info.
+        These should be de-prioritized when searching for secrets/non-public info.
+        """
+        connections = self.get_connections(entity)
+        if not connections:
+            return False  # Can't be dead end without connections yet
+
+        return self.connection_quality(entity) < threshold
+
+    @property
+    def dead_ends(self) -> List[str]:
+        """Get all entities identified as dead ends."""
+        return [
+            e for e in self.validated_entities.keys()
+            if self.is_dead_end(e)
+        ]
+
+    @property
+    def live_threads(self) -> List[str]:
+        """Get entities with high-quality connections (not dead ends)."""
+        return [
+            e for e in self.validated_entities.keys()
+            if self.get_connections(e) and not self.is_dead_end(e)
+        ]
+
     def score_entity(self, entity: str) -> float:
         """
-        Score an entity based on frequency, specificity, and connectivity.
+        Score an entity based on frequency, specificity, connectivity, and connection quality.
 
         Higher score = more important for narrative.
+        Dead ends (leading only to noise) get penalized.
         """
         frequency = self.entity_counts.get(entity, 0)
         connections = len(self.get_connections(entity))
-        return score_concept(entity, frequency, connections)
+        base = score_concept(entity, frequency, connections)
+
+        # Apply dead-end penalty - entities that only lead to noise get downweighted
+        if self.is_dead_end(entity):
+            base *= 0.3  # Significant penalty for dead ends
+
+        return base
 
     @property
     def scored_entities(self) -> List[Tuple[str, float, int]]:
@@ -147,6 +221,9 @@ class Findings:
             "refusal_rate": round(self.refusal_rate, 3),
             "validated_count": len(self.validated_entities),
             "noise_count": len(self.noise_entities),
+            # Dead-end detection: entities leading only to public/generic info
+            "dead_ends": self.dead_ends[:20],
+            "live_threads": self.live_threads[:20],
         }
 
 

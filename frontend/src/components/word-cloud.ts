@@ -8,12 +8,22 @@ interface WordItem {
   x: number;
   y: number;
   color: string;
+  heat: number;  // 0 = cold/dead, 1 = hot/new
 }
 
 @customElement('word-cloud')
 export class WordCloud extends LitElement {
   @property({ type: Array })
   promotedEntities: string[] = [];
+
+  @property({ type: Array })
+  deadEnds: string[] = [];  // Entities that only lead to noise/public info
+
+  @property({ type: Array })
+  liveThreads: string[] = [];  // Entities with high-quality connections
+
+  @property({ type: Object })
+  entityHeat: Record<string, number> = {};  // 0-1 heat score per entity
 
   static styles = css`
     :host {
@@ -70,6 +80,26 @@ export class WordCloud extends LitElement {
       background: rgba(63, 185, 80, 0.15);
       padding: 2px 4px;
       border-radius: 3px;
+    }
+
+    .word.dead-end {
+      opacity: 0.35;
+      text-decoration: line-through;
+      text-decoration-color: rgba(248, 81, 73, 0.6);
+    }
+
+    .word.dead-end:hover {
+      opacity: 0.6;
+    }
+
+    .word.live-thread {
+      text-shadow: 0 0 20px #3fb950, 0 0 30px #3fb950;
+      animation: liveGlow 1.5s ease-in-out infinite;
+    }
+
+    @keyframes liveGlow {
+      0%, 100% { text-shadow: 0 0 20px currentColor, 0 0 30px #3fb950; }
+      50% { text-shadow: 0 0 25px currentColor, 0 0 40px #3fb950, 0 0 50px #3fb950; }
     }
 
     @keyframes pulse {
@@ -229,6 +259,7 @@ export class WordCloud extends LitElement {
 
       if (pos) {
         placed.push({ x: pos.x, y: pos.y, w: wordWidth, h: wordHeight });
+        const heat = this.getHeat(text, count);
         words.push({
           text,
           count,
@@ -236,6 +267,7 @@ export class WordCloud extends LitElement {
           x: pos.x,
           y: pos.y,
           color,
+          heat,
         });
       }
     }
@@ -301,19 +333,59 @@ export class WordCloud extends LitElement {
     return boring.includes(text);
   }
 
-  private getColor(count: number, _normalized: number, text: string): string {
-    const hash = text.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    if (count >= this.signalThreshold * 3) {
-      return this.colors.hot[hash % this.colors.hot.length];
-    } else if (count >= this.signalThreshold * 2) {
-      return this.colors.warm[hash % this.colors.warm.length];
-    } else if (count >= this.signalThreshold) {
-      return this.colors.cool[hash % this.colors.cool.length];
-    } else if (count >= 2) {
-      return this.colors.cold[hash % this.colors.cold.length];
-    } else {
-      return this.colors.muted[hash % this.colors.muted.length];
+  private getHeat(text: string, count: number): number {
+    // Check explicit heat score first
+    if (this.entityHeat[text] !== undefined) {
+      return this.entityHeat[text];
     }
+
+    // Dead ends are cold
+    if (this.deadEnds.includes(text)) {
+      return 0.1;
+    }
+
+    // Live threads are hot
+    if (this.liveThreads.includes(text)) {
+      return 0.9;
+    }
+
+    // Otherwise base on frequency relative to threshold
+    const values = Object.values(this.entities);
+    const maxCount = values.length > 0 ? Math.max(...values) : 1;
+
+    // High frequency + above threshold = warmer
+    if (count >= this.signalThreshold * 3) return 0.85;
+    if (count >= this.signalThreshold * 2) return 0.7;
+    if (count >= this.signalThreshold) return 0.5;
+    if (count >= 2) return 0.3;
+    return 0.15;
+  }
+
+  private heatToColor(heat: number): string {
+    // Red (hot) → Orange → Yellow → Cyan → Blue (cold)
+    // heat: 1 = red, 0 = blue
+
+    if (heat > 0.8) {
+      // Hot: bright red/orange
+      return `hsl(${10 + (1 - heat) * 30}, 90%, 60%)`;
+    } else if (heat > 0.6) {
+      // Warm: orange/yellow
+      return `hsl(${40 + (0.8 - heat) * 40}, 85%, 55%)`;
+    } else if (heat > 0.4) {
+      // Medium: yellow/green
+      return `hsl(${80 + (0.6 - heat) * 60}, 75%, 50%)`;
+    } else if (heat > 0.2) {
+      // Cool: cyan/light blue
+      return `hsl(${180 + (0.4 - heat) * 40}, 70%, 55%)`;
+    } else {
+      // Cold: blue/gray
+      return `hsl(${220 + (0.2 - heat) * 20}, 50%, 50%)`;
+    }
+  }
+
+  private getColor(count: number, _normalized: number, text: string): string {
+    const heat = this.getHeat(text, count);
+    return this.heatToColor(heat);
   }
 
   private handleWordMouseDown(word: string, e: MouseEvent) {
@@ -359,11 +431,14 @@ export class WordCloud extends LitElement {
               <div class="glow-overlay"></div>
               ${this.words.map(word => {
                 const isPromoted = this.promotedEntities.includes(word.text);
+                const isDeadEnd = this.deadEnds.includes(word.text);
+                const isLiveThread = this.liveThreads.includes(word.text);
+                const statusLabel = isPromoted ? ' [PROMOTED]' : isDeadEnd ? ' [DEAD END]' : isLiveThread ? ' [LIVE]' : '';
                 return html`
                   <span
-                    class="word ${word.count >= this.signalThreshold ? 'signal' : ''} ${this.selectedWord === word.text ? 'selected' : ''} ${isPromoted ? 'promoted' : ''}"
+                    class="word ${word.count >= this.signalThreshold ? 'signal' : ''} ${this.selectedWord === word.text ? 'selected' : ''} ${isPromoted ? 'promoted' : ''} ${isDeadEnd ? 'dead-end' : ''} ${isLiveThread && !isPromoted ? 'live-thread' : ''}"
                     style="font-size: ${word.size}px; color: ${word.color}; left: ${word.x}px; top: ${word.y}px;"
-                    title="${word.text}: ${word.count}x${isPromoted ? ' [PROMOTED]' : ''}"
+                    title="${word.text}: ${word.count}x${statusLabel}"
                     @mousedown=${(e: MouseEvent) => this.handleWordMouseDown(word.text, e)}
                     @mouseup=${(e: MouseEvent) => this.handleWordMouseUp(word.text, e)}
                     @mouseleave=${() => { this.selectedWord = null; this.pressStartTime = 0; }}
@@ -377,24 +452,24 @@ export class WordCloud extends LitElement {
         <div class="stats-bar">
           <div class="legend">
             <div class="legend-item">
-              <span class="legend-dot" style="background: #ff6b6b"></span>
-              Hot (${this.signalThreshold * 3}+)
+              <span class="legend-dot" style="background: hsl(15, 90%, 60%)"></span>
+              Hot
             </div>
             <div class="legend-item">
-              <span class="legend-dot" style="background: #ffd43b"></span>
+              <span class="legend-dot" style="background: hsl(50, 85%, 55%)"></span>
               Warm
             </div>
             <div class="legend-item">
-              <span class="legend-dot" style="background: #69db7c"></span>
-              Signal (${this.signalThreshold}+)
+              <span class="legend-dot" style="background: hsl(120, 75%, 50%)"></span>
+              Cool
             </div>
             <div class="legend-item">
-              <span class="legend-dot" style="background: #748ffc"></span>
-              Emerging
+              <span class="legend-dot" style="background: hsl(220, 50%, 50%); opacity: 0.6"></span>
+              Cold
             </div>
           </div>
           <div>
-            ${signalCount} signals / ${noiseCount} noise
+            ${this.liveThreads.length} live / ${this.deadEnds.length} dead / ${signalCount} signal
           </div>
         </div>
       </div>

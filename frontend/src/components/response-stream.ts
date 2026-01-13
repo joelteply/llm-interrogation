@@ -613,7 +613,7 @@ export class ResponseStream extends LitElement {
               <div class="model-dropdown">
                 <button
                   class="add-model-btn"
-                  @click=${() => this.showModelDropdown = !this.showModelDropdown}
+                  @click=${(e: Event) => { e.stopPropagation(); this.showModelDropdown = !this.showModelDropdown; }}
                   title="Add model"
                 >+</button>
                 ${this.showModelDropdown ? html`
@@ -621,7 +621,7 @@ export class ResponseStream extends LitElement {
                     ${AVAILABLE_MODELS
                       .filter(m => !this._probeState.selectedModels.includes(m.id))
                       .map(m => html`
-                        <div class="model-option" @click=${() => this.addModel(m.id)}>
+                        <div class="model-option" @click=${(e: Event) => { e.stopPropagation(); this.addModel(m.id); }}>
                           <span>${m.name}</span>
                           <span class="provider">${m.provider}</span>
                         </div>

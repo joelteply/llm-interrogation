@@ -481,6 +481,13 @@ export class ProjectView extends LitElement {
         }));
       }
 
+      // Load hidden and promoted entities (negative/positive like Stable Diffusion)
+      probeState.update((s) => ({
+        ...s,
+        hiddenEntities: this.project!.hidden_entities || [],
+        promotedEntities: this.project!.promoted_entities || [],
+      }));
+
       // Load findings
       try {
         this.findings = await getFindings(this.projectName);
@@ -585,7 +592,7 @@ export class ProjectView extends LitElement {
     this.binPressStart = Date.now();
   }
 
-  private handleBinItemMouseUp(entity: string) {
+  private async handleBinItemMouseUp(entity: string) {
     const duration = Date.now() - this.binPressStart;
     if (duration < 300) {
       // Tap - restore
@@ -601,11 +608,25 @@ export class ProjectView extends LitElement {
       }));
     }
     this.binPressStart = 0;
+
+    // Persist to backend
+    if (this.projectName) {
+      await updateProject(this.projectName, {
+        hidden_entities: probeState.get().hiddenEntities,
+      });
+    }
   }
 
-  private emptyBin() {
+  private async emptyBin() {
     probeState.update(s => ({ ...s, hiddenEntities: [] }));
     this.showBin = false;
+
+    // Persist to backend
+    if (this.projectName) {
+      await updateProject(this.projectName, {
+        hidden_entities: [],
+      });
+    }
   }
 
   private handleClickOutside = (e: MouseEvent) => {

@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { probeState, groundTruthState, type ProbeState } from '../state';
+import { probeState, groundTruthState, appState, type ProbeState } from '../state';
+import { updateProject } from '../api';
 import type { Findings } from '../types';
 import './word-cloud';
 import './concept-graph';
@@ -331,7 +332,7 @@ export class FindingsPanel extends LitElement {
     return filtered;
   }
 
-  private handleEntitySelect(e: CustomEvent) {
+  private async handleEntitySelect(e: CustomEvent) {
     const { entity, action } = e.detail;
     this.lastAction = { entity, action };
 
@@ -361,6 +362,16 @@ export class FindingsPanel extends LitElement {
         detail: { entity },
         bubbles: true, composed: true
       }));
+    }
+
+    // Persist to backend (like Stable Diffusion positive/negative prompts)
+    const currentProject = appState.get().currentProject;
+    if (currentProject) {
+      const state = probeState.get();
+      await updateProject(currentProject, {
+        hidden_entities: state.hiddenEntities,
+        promoted_entities: state.promotedEntities,
+      });
     }
 
     // Clear action indicator after a moment
@@ -435,7 +446,7 @@ export class FindingsPanel extends LitElement {
               >◉</button>
             </div>
             ${this.viewMode === 'cloud' ? html`
-              <word-cloud .entities=${{}} .signalThreshold=${this.consistentThreshold} .promotedEntities=${this._probeState.promotedEntities}></word-cloud>
+              <word-cloud .entities=${{}} .signalThreshold=${this.consistentThreshold} .promotedEntities=${this._probeState.promotedEntities} .deadEnds=${[]} .liveThreads=${[]}></word-cloud>
             ` : html`
               <concept-graph .entities=${{}} .cooccurrences=${[]}></concept-graph>
             `}
@@ -475,6 +486,8 @@ export class FindingsPanel extends LitElement {
               .entities=${this.getFilteredEntities()}
               .signalThreshold=${this.consistentThreshold}
               .promotedEntities=${this._probeState.promotedEntities}
+              .deadEnds=${this.findings?.dead_ends || []}
+              .liveThreads=${this.findings?.live_threads || []}
               @entity-select=${this.handleEntitySelect}
             ></word-cloud>
           ` : html`

@@ -4,6 +4,8 @@ export interface Project {
   topic?: string;
   angles?: string[];
   ground_truth?: string[];
+  hidden_entities?: string[];    // Negative prompts - entities to avoid
+  promoted_entities?: string[];  // Positive prompts - entities to focus on
   created_at?: string;
   corpus_count?: number;
 }
@@ -58,14 +60,26 @@ export interface ProbeResponse {
   is_refusal?: boolean;
 }
 
+// Scored entity with frequency and score
+export interface ScoredEntity {
+  entity: string;
+  score: number;
+  frequency: number;
+}
+
 // Findings aggregate
 export interface Findings {
   entities: Record<string, number>;  // entity -> count
+  scored_entities?: ScoredEntity[];  // entities with scores (frequency × specificity × connections)
   by_model: Record<string, Record<string, number>>;  // model -> entity -> count
   by_question: Record<number, Record<string, number>>;  // question_index -> entity -> count
   warmth_scores?: Record<string, number>;  // entity -> warmth score (if ground truth set)
   corpus_size: number;
   refusal_rate: number;
+  // Dead-end detection: entities leading only to public/generic info
+  dead_ends?: string[];
+  // Live threads: entities with high-quality connections to pursue
+  live_threads?: string[];
 }
 
 // SSE event types
