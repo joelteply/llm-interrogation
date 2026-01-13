@@ -15,7 +15,7 @@ from config import (
     INTERROGATOR_PROMPT, DRILL_DOWN_PROMPT
 )
 from interrogator import (
-    Findings, extract_entities, extract_concepts,
+    Findings, extract_entities, extract_concepts, extract_with_relationships,
     build_synthesis_prompt, build_continuation_prompt,
     build_continuation_prompts, build_drill_down_prompts,
     CycleState, identify_threads
@@ -194,13 +194,15 @@ def run_cycle():
                                         )
                                         resp_text = resp.choices[0].message.content
 
-                                    # Extract entities with scoring
-                                    concepts = extract_concepts(resp_text)
-                                    entities = [c.text for c in concepts if c.text not in hidden_entities]
+                                    # Extract entities WITH sentence-level relationships
+                                    entities, sentence_pairs = extract_with_relationships(resp_text)
+                                    entities = [e for e in entities if e not in hidden_entities]
+                                    sentence_pairs = [(e1, e2) for e1, e2 in sentence_pairs
+                                                      if e1 not in hidden_entities and e2 not in hidden_entities]
                                     is_refusal = _is_refusal(resp_text)
 
-                                    # Add to findings
-                                    state.findings.add_response(entities, model_key, is_refusal)
+                                    # Add to findings with sentence-level correlation data
+                                    state.findings.add_response(entities, model_key, is_refusal, sentence_pairs)
 
                                     response_obj = {
                                         "prompt_index": p_idx,

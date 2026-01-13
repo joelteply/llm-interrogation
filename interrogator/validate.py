@@ -17,12 +17,20 @@ class Findings:
     """
     Accumulated findings from probing.
 
-    Tracks entities, co-occurrences, and computed scores.
+    Tracks entities, co-occurrences, and correlation strength.
+    Correlations are built AND destroyed based on evidence:
+    - Co-occurrence strengthens correlation
+    - Independent occurrence weakens correlation
     """
     # Raw counts
     entity_counts: Counter = field(default_factory=Counter)
     cooccurrence_counts: Counter = field(default_factory=Counter)  # "A|||B" -> count
+    sentence_cooccurrence_counts: Counter = field(default_factory=Counter)  # Same-sentence pairs (stronger)
     by_model: Dict[str, Counter] = field(default_factory=dict)
+
+    # Track when entities last produced new connections (for dead-end detection)
+    entity_last_new_connection: Dict[str, int] = field(default_factory=dict)  # entity -> corpus_size when last new connection
+    entity_connection_counts: Dict[str, int] = field(default_factory=dict)  # entity -> unique connections count
 
     # Metadata
     corpus_size: int = 0
@@ -47,8 +55,17 @@ class Findings:
         self._live_threads_cache = None
         self._scored_entities_cache = None
 
-    def add_response(self, entities: List[str], model: str, is_refusal: bool = False):
-        """Add entities from a single response."""
+    def add_response(self, entities: List[str], model: str, is_refusal: bool = False,
+                     sentence_pairs: Optional[List[Tuple[str, str]]] = None):
+        """
+        Add entities from a single response with correlation tracking.
+
+        Args:
+            entities: All entities from response
+            model: Model that generated response
+            is_refusal: Whether response was a refusal
+            sentence_pairs: Entity pairs from same sentence (stronger correlation signal)
+        """
         self.corpus_size += 1
         self._clear_caches()
 
@@ -64,12 +81,29 @@ class Findings:
                 self.by_model[model] = Counter()
             self.by_model[model][e] += 1
 
-        # Count co-occurrences (pairs in same response)
-        entity_list = list(set(entities))  # Dedupe within response
+        # Track sentence-level co-occurrences (strongest signal)
+        if sentence_pairs:
+            for e1, e2 in sentence_pairs:
+                pair = "|||".join(sorted([e1, e2]))
+                self.sentence_cooccurrence_counts[pair] += 1
+
+        # Count document-level co-occurrences
+        entity_list = list(set(entities))
         for i in range(len(entity_list)):
             for j in range(i + 1, len(entity_list)):
-                pair = "|||".join(sorted([entity_list[i], entity_list[j]]))
+                e1, e2 = entity_list[i], entity_list[j]
+                pair = "|||".join(sorted([e1, e2]))
+
+                # Track if this is a NEW connection for each entity
+                was_new = self.cooccurrence_counts[pair] == 0
+
                 self.cooccurrence_counts[pair] += 1
+
+                # Update connection tracking for dead-end detection
+                if was_new:
+                    for e in [e1, e2]:
+                        self.entity_last_new_connection[e] = self.corpus_size
+                        self.entity_connection_counts[e] = self.entity_connection_counts.get(e, 0) + 1
 
     @property
     def validated_entities(self) -> Dict[str, int]:
@@ -156,16 +190,53 @@ class Findings:
         total_weight = sum(c for _, c in connections)
         return total_quality / total_weight if total_weight > 0 else 0.0
 
+    def correlation_strength(self, e1: str, e2: str) -> float:
+        """
+        Compute correlation strength between two entities.
+
+        Uses PMI-like calculation:
+        - High co-occurrence relative to independent occurrence = strong
+        - Low co-occurrence relative to frequency = weak/destroyed
+
+        Sentence-level co-occurrence weighted 3x stronger than document-level.
+        """
+        pair = "|||".join(sorted([e1, e2]))
+        doc_cooccur = self.cooccurrence_counts.get(pair, 0)
+        sent_cooccur = self.sentence_cooccurrence_counts.get(pair, 0)
+
+        # Weighted co-occurrence (sentence = 3x document)
+        weighted_cooccur = doc_cooccur + (sent_cooccur * 2)  # sentence already counted in doc
+
+        freq_e1 = self.entity_counts.get(e1, 1)
+        freq_e2 = self.entity_counts.get(e2, 1)
+
+        # Expected co-occurrence if independent
+        expected = (freq_e1 * freq_e2) / max(self.corpus_size, 1)
+
+        # PMI-like score (actual vs expected)
+        if expected > 0:
+            return weighted_cooccur / expected
+        return weighted_cooccur
+
     def is_dead_end(self, entity: str, threshold: float = 10.0) -> bool:
         """
-        An entity is a dead end if it only connects to low-quality/noise entities.
+        An entity is a dead end if:
+        1. It only connects to low-quality/noise entities, OR
+        2. It hasn't produced new connections recently
 
-        Dead end = public info that leads only to more public/generic info.
-        These should be de-prioritized when searching for secrets/non-public info.
+        Dead ends = paths that stop yielding new information.
         """
         connections = self.get_connections(entity)
         if not connections:
             return False  # Can't be dead end without connections yet
+
+        # Check if entity has stopped producing new connections
+        last_new = self.entity_last_new_connection.get(entity, 0)
+        responses_since_new = self.corpus_size - last_new
+
+        # If no new connections in last 20% of corpus, likely a dead end
+        if self.corpus_size > 50 and responses_since_new > self.corpus_size * 0.2:
+            return True
 
         return self.connection_quality(entity) < threshold
 
