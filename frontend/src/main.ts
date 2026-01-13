@@ -12,6 +12,8 @@ import './components/response-stream';
 import './components/findings-panel';
 import './components/tag-input';
 import './components/word-cloud';
+import './components/resizable-panel';
+import './components/concept-graph';
 
 // Initialize routing from URL
 initFromUrl();

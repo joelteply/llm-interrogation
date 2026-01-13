@@ -18,16 +18,19 @@ export class WordCloud extends LitElement {
   static styles = css`
     :host {
       display: block;
+      height: 100%;
     }
 
     .cloud-container {
       position: relative;
       width: 100%;
-      height: var(--height, 350px);
+      height: 100%;
+      min-height: 150px;
       background: linear-gradient(135deg, rgba(13, 17, 23, 0.9) 0%, rgba(22, 27, 34, 0.9) 100%);
       border: 1px solid var(--border-default, #30363d);
       border-radius: 12px;
       overflow: hidden;
+      box-sizing: border-box;
     }
 
     .word {
@@ -169,7 +172,7 @@ export class WordCloud extends LitElement {
           const { width, height } = entry.contentRect;
           if (width > 50 && height > 50) {
             this.containerWidth = width;
-            this.containerHeight = height - 35; // Stats bar height
+            this.containerHeight = height - 30; // Stats bar height
             this.calculateLayout();
           }
         }
@@ -208,9 +211,15 @@ export class WordCloud extends LitElement {
     const centerX = this.containerWidth / 2;
     const centerY = this.containerHeight / 2;
 
+    // Scale font size based on container area (reference: 800x400)
+    const baseArea = 800 * 400;
+    const actualArea = this.containerWidth * this.containerHeight;
+    const scaleFactor = Math.sqrt(actualArea / baseArea);
+
     for (const [text, count] of topEntries) {
       const normalizedCount = (count - minCount) / (maxCount - minCount || 1);
-      const size = Math.floor(14 + normalizedCount * 32);
+      const baseSize = 14 + normalizedCount * 32;
+      const size = Math.floor(baseSize * scaleFactor);
       const color = this.getColor(count, normalizedCount, text);
 
       const wordWidth = text.length * size * 0.55;
@@ -241,16 +250,21 @@ export class WordCloud extends LitElement {
     centerX: number,
     centerY: number
   ): { x: number; y: number } | null {
-    let angle = placed.length * 0.5;
-    let radius = 0;
+    // Inscribed ellipse: a = W/2, b = H/2 (with padding)
+    const padding = 20;
+    const a = this.containerWidth / 2 - padding;
+    const b = this.containerHeight / 2 - padding;
 
-    // Stretch factor to fill width (container is typically wider than tall)
-    const stretchX = (this.containerWidth / this.containerHeight) * 1.3;
+    // Force words to spread: each word assigned to a ring, searches within that ring
+    const totalWords = Math.max(Object.keys(this.entities).length, 1);
+    const startT = Math.sqrt(placed.length / totalWords); // sqrt gives better distribution
+    let t = startT;
+    let angle = placed.length * 2.8;
 
     for (let i = 0; i < 2000; i++) {
-      // Elliptical spiral - stretch to match container aspect ratio
-      const x = centerX + Math.cos(angle) * radius * stretchX - width / 2;
-      const y = centerY + Math.sin(angle) * radius - height / 2;
+      // Parametric ellipse scaled by t
+      const x = centerX + t * a * Math.cos(angle) - width / 2;
+      const y = centerY + t * b * Math.sin(angle) - height / 2;
 
       // Check bounds
       if (x >= 5 && x + width <= this.containerWidth - 5 &&
@@ -259,8 +273,8 @@ export class WordCloud extends LitElement {
         // Check collisions
         let collision = false;
         for (const p of placed) {
-          if (!(x + width + 3 < p.x || x > p.x + p.w + 3 ||
-                y + height + 3 < p.y || y > p.y + p.h + 3)) {
+          if (!(x + width + 6 < p.x || x > p.x + p.w + 6 ||
+                y + height + 6 < p.y || y > p.y + p.h + 6)) {
             collision = true;
             break;
           }
@@ -271,8 +285,9 @@ export class WordCloud extends LitElement {
         }
       }
 
-      angle += 0.15;
-      radius += 2;
+      // Search around ring first (angle), then expand outward
+      angle += 0.25;
+      if (i % 15 === 0) t += 0.03;
     }
 
     return null;

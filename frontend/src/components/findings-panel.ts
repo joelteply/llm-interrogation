@@ -3,18 +3,24 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { probeState, groundTruthState, type ProbeState } from '../state';
 import type { Findings } from '../types';
 import './word-cloud';
+import './concept-graph';
+
+type ViewMode = 'cloud' | 'graph';
 
 @customElement('findings-panel')
 export class FindingsPanel extends LitElement {
   static styles = css`
     :host {
       display: block;
+      height: 100%;
     }
 
     .card {
       background: transparent;
       border: none;
       padding: 0;
+      height: 100%;
+      box-sizing: border-box;
     }
 
     .header {
@@ -213,6 +219,56 @@ export class FindingsPanel extends LitElement {
       color: var(--accent-blue, #58a6ff);
       text-decoration: underline;
     }
+
+    .view-toggle {
+      position: absolute;
+      top: 8px;
+      right: 45px;
+      display: flex;
+      gap: 2px;
+      background: rgba(33, 38, 45, 0.9);
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 2px;
+      z-index: 10;
+    }
+
+    .view-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 24px;
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      color: #6e7681;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 150ms;
+    }
+
+    .view-btn:hover {
+      color: #c9d1d9;
+      background: #30363d;
+    }
+
+    .view-btn.active {
+      background: #58a6ff;
+      color: white;
+    }
+
+    .view-container {
+      height: 100%;
+      position: relative;
+      box-sizing: border-box;
+    }
+
+    concept-graph,
+    word-cloud {
+      height: 100%;
+      display: block;
+    }
   `;
 
   @property({ type: Object })
@@ -229,6 +285,9 @@ export class FindingsPanel extends LitElement {
 
   @state()
   private lastAction: { entity: string; action: string } | null = null;
+
+  @state()
+  private viewMode: ViewMode = 'cloud';
 
   private _unsubscribes: Array<() => void> = [];
 
@@ -322,6 +381,35 @@ export class FindingsPanel extends LitElement {
     return this.findings?.warmth_scores?.[entity] || 0;
   }
 
+  private getCooccurrences(): Array<{ entities: string[]; count: number }> {
+    // Compute co-occurrences from responses - entities that appear in the same response
+    const responses = this._probeState.responses;
+    const cooccurrenceMap = new Map<string, number>();
+    const entitySet = new Set(Object.keys(this.getFilteredEntities()));
+
+    for (const response of responses) {
+      // Get entities mentioned in this response (simplified: check if entity appears in response text)
+      const mentionedEntities = Array.from(entitySet).filter(entity =>
+        response.response?.toLowerCase().includes(entity.toLowerCase())
+      );
+
+      // Create co-occurrence pairs
+      if (mentionedEntities.length >= 2) {
+        // Store all entities that co-occurred
+        const sorted = [...mentionedEntities].sort();
+        const key = sorted.join('|||');
+        cooccurrenceMap.set(key, (cooccurrenceMap.get(key) || 0) + 1);
+      }
+    }
+
+    return Array.from(cooccurrenceMap.entries())
+      .map(([key, count]) => ({
+        entities: key.split('|||'),
+        count
+      }))
+      .sort((a, b) => b.count - a.count);
+  }
+
   render() {
     const entities = this.getSortedEntities();
     const consistent = entities.filter(([, count]) => count >= this.consistentThreshold);
@@ -333,7 +421,25 @@ export class FindingsPanel extends LitElement {
           <div class="header">
             <h3>Findings</h3>
           </div>
-          <word-cloud .entities=${{}} .signalThreshold=${this.consistentThreshold} .promotedEntities=${this._probeState.promotedEntities}></word-cloud>
+          <div class="view-container">
+            <div class="view-toggle">
+              <button
+                class="view-btn ${this.viewMode === 'cloud' ? 'active' : ''}"
+                @click=${() => this.viewMode = 'cloud'}
+                title="Word Cloud"
+              >☁</button>
+              <button
+                class="view-btn ${this.viewMode === 'graph' ? 'active' : ''}"
+                @click=${() => this.viewMode = 'graph'}
+                title="Concept Graph"
+              >◉</button>
+            </div>
+            ${this.viewMode === 'cloud' ? html`
+              <word-cloud .entities=${{}} .signalThreshold=${this.consistentThreshold} .promotedEntities=${this._probeState.promotedEntities}></word-cloud>
+            ` : html`
+              <concept-graph .entities=${{}} .cooccurrences=${[]}></concept-graph>
+            `}
+          </div>
           <div class="empty" style="padding: 16px;">
             Extracted entities will appear here as probes complete.
             Consistent entities (appearing multiple times) suggest real signal.
@@ -349,14 +455,38 @@ export class FindingsPanel extends LitElement {
       : 0;
 
     return html`
-      <div class="card" style="position: relative;">
-        <word-cloud
-          .entities=${this.getFilteredEntities()}
-          .signalThreshold=${this.consistentThreshold}
-          .promotedEntities=${this._probeState.promotedEntities}
-          @entity-select=${this.handleEntitySelect}
-          style="--height: 20vh;"
-        ></word-cloud>
+      <div class="card" style="position: relative; height: 100%;">
+        <div class="view-container">
+          <div class="view-toggle">
+            <button
+              class="view-btn ${this.viewMode === 'cloud' ? 'active' : ''}"
+              @click=${() => this.viewMode = 'cloud'}
+              title="Word Cloud"
+            >☁</button>
+            <button
+              class="view-btn ${this.viewMode === 'graph' ? 'active' : ''}"
+              @click=${() => this.viewMode = 'graph'}
+              title="Concept Graph"
+            >◉</button>
+          </div>
+
+          ${this.viewMode === 'cloud' ? html`
+            <word-cloud
+              .entities=${this.getFilteredEntities()}
+              .signalThreshold=${this.consistentThreshold}
+              .promotedEntities=${this._probeState.promotedEntities}
+              @entity-select=${this.handleEntitySelect}
+            ></word-cloud>
+          ` : html`
+            <concept-graph
+              .entities=${this.getFilteredEntities()}
+              .cooccurrences=${this.getCooccurrences()}
+              @node-select=${(e: CustomEvent) => this.handleEntitySelect(new CustomEvent('entity-select', {
+                detail: { entity: e.detail.entity, action: 'promote' }
+              }))}
+            ></concept-graph>
+          `}
+        </div>
 
         ${this.lastAction ? html`
           <div style="

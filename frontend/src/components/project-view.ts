@@ -93,14 +93,27 @@ export class ProjectView extends LitElement {
     .main-layout {
       display: flex;
       flex-direction: column;
-      min-height: calc(100vh - 65px);
+      height: calc(100vh - 65px);
+      overflow: hidden;
+    }
+
+    resizable-panel {
+      flex: 1;
+      overflow: hidden;
     }
 
     /* Top: Interactive findings/word cloud */
     .findings-top {
-      padding: 8px 16px;
-      border-bottom: 1px solid #30363d;
+      padding: 8px;
       background: #161b22;
+      height: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    .findings-top findings-panel {
+      height: 100%;
+      display: block;
     }
 
     /* Below: Two columns - questions queue + response stream */
@@ -110,6 +123,8 @@ export class ProjectView extends LitElement {
       gap: 24px;
       padding: 24px;
       align-items: start;
+      height: 100%;
+      overflow: auto;
     }
 
     @media (max-width: 900px) {
@@ -120,7 +135,7 @@ export class ProjectView extends LitElement {
 
     .questions-column {
       position: sticky;
-      top: 80px;
+      top: 0;
     }
 
     .responses-column {
@@ -720,22 +735,24 @@ export class ProjectView extends LitElement {
         </div>
       </div>
 
-      <!-- Main layout: single column -->
+      <!-- Main layout: resizable panels -->
       <div class="main-layout">
-        <!-- TOP: Interactive word cloud -->
-        <div class="findings-top">
-          <findings-panel .findings=${this.findings}></findings-panel>
-        </div>
+        <resizable-panel .initialHeight=${280} .minHeight=${150} .maxHeight=${600}>
+          <!-- TOP: Interactive word cloud -->
+          <div slot="top" class="findings-top">
+            <findings-panel .findings=${this.findings}></findings-panel>
+          </div>
 
-        <!-- BELOW: Questions + Responses side by side -->
-        <div class="interrogation-area">
-          <div class="questions-column">
-            <question-queue></question-queue>
+          <!-- BOTTOM: Questions + Responses side by side -->
+          <div slot="bottom" class="interrogation-area">
+            <div class="questions-column">
+              <question-queue></question-queue>
+            </div>
+            <div class="responses-column">
+              <response-stream .projectName=${this.projectName} @stop-probe=${this.handleStop}></response-stream>
+            </div>
           </div>
-          <div class="responses-column">
-            <response-stream .projectName=${this.projectName}></response-stream>
-          </div>
-        </div>
+        </resizable-panel>
       </div>
 
       <!-- Config drawer (slides from left) -->
