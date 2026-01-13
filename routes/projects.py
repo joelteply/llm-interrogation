@@ -140,9 +140,25 @@ def get_findings(name):
     probe_corpus = project.get("probe_corpus", [])
     hidden_entities = set(project.get("hidden_entities", []))
 
+    # Build word set from hidden entities for fuzzy matching
+    # e.g., "Joel Spolsky" -> {"joel", "spolsky"}
+    hidden_words = set()
+    for h in hidden_entities:
+        for word in h.lower().split():
+            if len(word) > 3:  # Only meaningful words
+                hidden_words.add(word)
+
+    def is_hidden(entity):
+        """Check if entity matches any hidden entity (exact or partial)."""
+        if entity in hidden_entities:
+            return True
+        # Check if any word in entity matches hidden words
+        entity_words = set(entity.lower().split())
+        return bool(entity_words & hidden_words)
+
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
     for item in probe_corpus:
-        entities = [e for e in item.get("entities", []) if e not in hidden_entities]
+        entities = [e for e in item.get("entities", []) if not is_hidden(e)]
         model = item.get("model", "unknown")
         is_refusal = item.get("is_refusal", False)
         findings.add_response(entities, model, is_refusal)

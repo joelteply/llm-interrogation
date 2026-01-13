@@ -22,11 +22,127 @@ from interrogator import (
 )
 from . import probe_bp
 
+# Try to import DuckDuckGo search
+try:
+    from duckduckgo_search import DDGS
+    SEARCH_AVAILABLE = True
+except ImportError:
+    SEARCH_AVAILABLE = False
+
+
+def _research_topic(topic: str, max_results: int = 8) -> str:
+    """
+    Search the web for public information about a topic.
+    Returns a summary of what's publicly known.
+    """
+    if not SEARCH_AVAILABLE:
+        return "Web search not available - duckduckgo-search not installed"
+
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(topic, max_results=max_results))
+
+        if not results:
+            return "No public information found via web search"
+
+        # Format results for the interrogator
+        lines = ["Publicly available information (from web search):"]
+        for r in results:
+            title = r.get("title", "")
+            snippet = r.get("body", r.get("snippet", ""))[:200]
+            if title and snippet:
+                lines.append(f"  - {title}: {snippet}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Web search failed: {e}"
+
 
 @probe_bp.route("/api/models")
 def get_models():
     """Get available models."""
     return jsonify(load_models_config())
+
+
+def _format_interrogator_context(
+    findings: Findings,
+    hidden_entities: set,
+    promoted_entities: list,
+    topic: str = "",
+    do_research: bool = True
+) -> dict:
+    """Format rich RAG context for the interrogator prompt."""
+    # Filter everything by hidden entities
+    def is_hidden(e):
+        if e in hidden_entities:
+            return True
+        e_words = set(e.lower().split())
+        for h in hidden_entities:
+            h_words = set(h.lower().split())
+            if e_words & h_words:
+                return True
+        return False
+
+    # Research public baseline (only on first cycle or if requested)
+    if do_research and topic:
+        public_baseline = _research_topic(topic)
+    else:
+        public_baseline = "Skipped web research"
+
+    # Stats section
+    stats = f"""- Corpus size: {findings.corpus_size} responses
+- Refusal rate: {findings.refusal_rate:.1%}
+- Validated entities: {len(findings.validated_entities)}
+- Noise entities (below threshold): {len(findings.noise_entities)}"""
+
+    # Ranked entities with scores
+    ranked = []
+    for e, score, freq in findings.scored_entities[:15]:
+        if not is_hidden(e):
+            ranked.append(f"  - {e}: score={score:.1f}, freq={freq}")
+    ranked_str = "\n".join(ranked) if ranked else "No validated entities yet"
+
+    # Cooccurrences
+    cooc = []
+    for e1, e2, count in findings.validated_cooccurrences[:10]:
+        if not is_hidden(e1) and not is_hidden(e2):
+            cooc.append(f"  - {e1} <-> {e2}: {count}x")
+    cooc_str = "\n".join(cooc) if cooc else "No strong co-occurrences yet"
+
+    # Live threads (with indication of why they're hot)
+    live = []
+    for e in findings.live_threads[:8]:
+        if not is_hidden(e):
+            freq = findings.entity_counts.get(e, 0)
+            live.append(f"  - {e} (freq={freq}, producing new connections)")
+    live_str = "\n".join(live) if live else "No live threads identified"
+
+    # Dead ends
+    dead = []
+    for e in findings.dead_ends[:8]:
+        if not is_hidden(e):
+            freq = findings.entity_counts.get(e, 0)
+            dead.append(f"  - {e} (freq={freq}, stalled)")
+    dead_str = "\n".join(dead) if dead else "No dead ends identified"
+
+    # Promoted entities
+    promoted_filtered = [e for e in promoted_entities if not is_hidden(e)]
+    promoted_str = ", ".join(promoted_filtered) if promoted_filtered else "none"
+
+    # Banned entities
+    banned_str = ", ".join(sorted(hidden_entities)) if hidden_entities else "none"
+
+    return {
+        "public_baseline": public_baseline,
+        "stats_section": stats,
+        "ranked_entities": ranked_str,
+        "cooccurrences": cooc_str,
+        "live_threads": live_str,
+        "dead_ends": dead_str,
+        "positive_entities": promoted_str,
+        "negative_entities": banned_str,
+    }
 
 
 @probe_bp.route("/api/generate-questions", methods=["POST"])
@@ -36,8 +152,32 @@ def generate_questions():
     topic = data.get("topic", "")
     angles = data.get("angles", [])
     count = min(int(data.get("count", 5)), 20)
-    entities_found = data.get("entities_found", [])
     narrative_context = data.get("narrative_context", "")  # From previous cycle
+    project_name = data.get("project")  # Load state from project
+
+    # Load project state for RAG context
+    hidden_entities = set()
+    promoted_entities = []
+    findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
+
+    if project_name:
+        project_file = PROJECTS_DIR / f"{project_name}.json"
+        if project_file.exists():
+            with open(project_file) as f:
+                project = json.load(f)
+            hidden_entities = set(project.get("hidden_entities", []))
+            promoted_entities = project.get("promoted_entities", [])
+
+            # Build findings from corpus
+            for item in project.get("probe_corpus", []):
+                entities = [e for e in item.get("entities", []) if e not in hidden_entities]
+                findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
+
+    # Format rich RAG context with web research
+    context = _format_interrogator_context(
+        findings, hidden_entities, promoted_entities,
+        topic=topic, do_research=True
+    )
 
     # Use DeepSeek or fallback
     try:
@@ -45,16 +185,12 @@ def generate_questions():
     except:
         client, cfg = get_client("groq/llama-3.1-8b-instant")
 
-    # Build prompt with narrative context if available
+    # Build prompt with full RAG context
     prompt = INTERROGATOR_PROMPT.format(
         topic=topic,
         angles=", ".join(angles) if angles else "general",
-        entities_found=", ".join(entities_found[:20]) if entities_found else "none yet",
-        positive_entities="none",
-        negative_entities="none",
-        dead_ends="none identified yet",
-        live_threads="none identified yet",
-        question_count=count
+        question_count=count,
+        **context  # Unpack all the formatted sections
     )
 
     # Add narrative context for informed questioning
@@ -361,20 +497,20 @@ def run_probe():
                 except:
                     client, cfg = get_client("groq/llama-3.1-8b-instant")
 
-                # Filter out negative entities from entities_found
-                filtered_entities = [e for e, _, _ in findings.scored_entities[:20] if e not in negative_entities][:10]
-                filtered_dead_ends = [e for e in findings.dead_ends[:10] if e not in negative_entities][:5]
-                filtered_live_threads = [e for e in findings.live_threads[:10] if e not in negative_entities][:5]
+                # Build rich RAG context for interrogator with web research
+                context = _format_interrogator_context(
+                    findings,
+                    negative_entities,
+                    positive_entities,
+                    topic=topic,
+                    do_research=True
+                )
 
                 prompt = INTERROGATOR_PROMPT.format(
                     topic=topic,
                     angles=", ".join(angles) if angles else "general",
-                    entities_found=", ".join(filtered_entities) or "none yet",
-                    positive_entities=", ".join(positive_entities) or "none",
-                    negative_entities=", ".join(negative_entities) or "none",
-                    dead_ends=", ".join(filtered_dead_ends) or "none identified yet",
-                    live_threads=", ".join(filtered_live_threads) or "none identified yet",
-                    question_count=question_count
+                    question_count=question_count,
+                    **context
                 )
 
                 try:
@@ -583,17 +719,20 @@ def _generate_questions_with_context(
     except:
         client, cfg = get_client("groq/llama-3.1-8b-instant")
 
-    scored = [e for e, _, _ in findings.scored_entities[:10]]
+    # Use the shared context formatter (skip research in follow-up cycles)
+    context = _format_interrogator_context(
+        findings,
+        set(negative_entities),
+        positive_entities,
+        topic=topic,
+        do_research=False  # Already researched in first cycle
+    )
 
     prompt = INTERROGATOR_PROMPT.format(
         topic=topic,
         angles="derived from findings",
-        entities_found=", ".join(scored) if scored else "none yet",
-        positive_entities=", ".join(positive_entities) or "none",
-        negative_entities=", ".join(negative_entities) or "none",
-        dead_ends=", ".join(findings.dead_ends[:5]) or "none identified yet",
-        live_threads=", ".join(findings.live_threads[:5]) or "none identified yet",
-        question_count=5
+        question_count=5,
+        **context
     )
 
     if narrative_context:

@@ -154,7 +154,8 @@ export async function generateQuestions(
   angles: string[],
   count: number,
   technique_preset: string,
-  entities_found?: string[]
+  entities_found?: string[],
+  project?: string  // Project name for loading banned/promoted entities
 ): Promise<{ questions: Array<{ question: string; technique: string }> }> {
   const res = await fetch(`${API_BASE}/generate-questions`, {
     method: 'POST',
@@ -165,6 +166,7 @@ export async function generateQuestions(
       count,
       technique_preset,
       entities_found: entities_found || [],
+      project,
     }),
   });
   if (!res.ok) throw new Error('Failed to generate questions');

@@ -417,7 +417,8 @@ export class ProbeControls extends LitElement {
         this._probeState.techniquePreset,
         this._probeState.findings?.entities
           ? Object.keys(this._probeState.findings.entities)
-          : undefined
+          : undefined,
+        this.projectName || undefined  // Pass project for banned/promoted entity context
       );
       probeState.update((s) => ({
         ...s,

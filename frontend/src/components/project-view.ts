@@ -524,7 +524,8 @@ export class ProjectView extends LitElement {
         state.angles,
         state.questionCount,
         state.techniquePreset,
-        Object.keys(state.findings?.entities || {}).slice(0, 20)
+        Object.keys(state.findings?.entities || {}).slice(0, 20),
+        this.projectName || undefined  // Pass project for banned/promoted entity context
       );
       probeState.update(s => ({ ...s, questions: result.questions as GeneratedQuestion[], isGenerating: false }));
     } catch (err) {
@@ -594,38 +595,41 @@ export class ProjectView extends LitElement {
 
   private async handleBinItemMouseUp(entity: string) {
     const duration = Date.now() - this.binPressStart;
-    if (duration < 300) {
-      // Tap - restore
-      probeState.update(s => ({
-        ...s,
-        hiddenEntities: s.hiddenEntities.filter(e => e !== entity)
-      }));
-    } else {
-      // Hold - permanently delete (just remove from hidden, it's gone)
-      probeState.update(s => ({
-        ...s,
-        hiddenEntities: s.hiddenEntities.filter(e => e !== entity)
-      }));
-    }
     this.binPressStart = 0;
 
-    // Persist to backend
-    if (this.projectName) {
-      await updateProject(this.projectName, {
-        hidden_entities: probeState.get().hiddenEntities,
-      });
+    if (duration < 300) {
+      // Tap - restore to visibility (remove from hidden list)
+      probeState.update(s => ({
+        ...s,
+        hiddenEntities: s.hiddenEntities.filter(e => e !== entity)
+      }));
+
+      // Persist removal from hidden list and reload findings
+      if (this.projectName) {
+        await updateProject(this.projectName, {
+          hidden_entities: probeState.get().hiddenEntities,
+        });
+        // Reload findings to include restored entity
+        const findings = await getFindings(this.projectName);
+        probeState.update(s => ({ ...s, findings }));
+      }
     }
+    // Long press - keep it hidden (no action needed, it stays banned)
+    // The entity remains in hiddenEntities, so it stays filtered out
   }
 
   private async emptyBin() {
     probeState.update(s => ({ ...s, hiddenEntities: [] }));
     this.showBin = false;
 
-    // Persist to backend
+    // Persist to backend and reload findings
     if (this.projectName) {
       await updateProject(this.projectName, {
         hidden_entities: [],
       });
+      // Reload findings to include all restored entities
+      const findings = await getFindings(this.projectName);
+      probeState.update(s => ({ ...s, findings }));
     }
   }
 

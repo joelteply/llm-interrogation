@@ -126,6 +126,7 @@ export class WordCloud extends LitElement {
       background: rgba(0, 0, 0, 0.6);
       display: flex;
       justify-content: space-between;
+      align-items: center;
       font-size: 10px;
       color: var(--text-muted, #6e7681);
     }
@@ -133,6 +134,35 @@ export class WordCloud extends LitElement {
     .legend {
       display: flex;
       gap: 12px;
+      align-items: center;
+    }
+
+    .temp-scale {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 12px;
+    }
+
+    .temp-gradient {
+      width: 100px;
+      height: 10px;
+      border-radius: 5px;
+      background: linear-gradient(to right,
+        #313695,
+        #4575b4,
+        #74add1,
+        #abd9e9,
+        #fee090,
+        #fdae61,
+        #f46d43,
+        #d73027
+      );
+    }
+
+    .temp-label {
+      font-size: 10px;
+      color: #8b949e;
     }
 
     .legend-item {
@@ -341,46 +371,65 @@ export class WordCloud extends LitElement {
 
     // Dead ends are cold
     if (this.deadEnds.includes(text)) {
-      return 0.1;
+      return 0.15;
     }
 
     // Live threads are hot
     if (this.liveThreads.includes(text)) {
-      return 0.9;
+      return 0.85;
     }
 
-    // Otherwise base on frequency relative to threshold
-    const values = Object.values(this.entities);
-    const maxCount = values.length > 0 ? Math.max(...values) : 1;
+    // Percentile-based heat - most items cluster in middle colors
+    const values = Object.values(this.entities).sort((a, b) => a - b);
+    if (values.length === 0) return 0.5;
 
-    // High frequency + above threshold = warmer
-    if (count >= this.signalThreshold * 3) return 0.85;
-    if (count >= this.signalThreshold * 2) return 0.7;
-    if (count >= this.signalThreshold) return 0.5;
-    if (count >= 2) return 0.3;
-    return 0.15;
+    // Find this value's percentile rank
+    const rank = values.filter(v => v < count).length;
+    const percentile = rank / values.length;
+
+    // Apply sigmoid-like curve to cluster mode in middle
+    // This pushes most values toward 0.5 while extremes go to edges
+    const curved = 0.5 + 0.4 * Math.tanh((percentile - 0.5) * 3);
+
+    // Clamp to leave room for dead ends (0.15) and live threads (0.85)
+    return Math.max(0.2, Math.min(0.75, curved));
   }
 
   private heatToColor(heat: number): string {
-    // Red (hot) → Orange → Yellow → Cyan → Blue (cold)
-    // heat: 1 = red, 0 = blue
+    // RdYlBu diverging palette: blue (cold) → yellow → red (hot)
+    // Matches the gradient bar in the legend
+    const palette = [
+      '#313695',  // 0.0 - deep blue (cold)
+      '#4575b4',  // 0.15
+      '#74add1',  // 0.3
+      '#abd9e9',  // 0.45
+      '#fee090',  // 0.55 - yellow (neutral)
+      '#fdae61',  // 0.7
+      '#f46d43',  // 0.85
+      '#d73027',  // 1.0 - red (hot)
+    ];
 
-    if (heat > 0.8) {
-      // Hot: bright red/orange
-      return `hsl(${10 + (1 - heat) * 30}, 90%, 60%)`;
-    } else if (heat > 0.6) {
-      // Warm: orange/yellow
-      return `hsl(${40 + (0.8 - heat) * 40}, 85%, 55%)`;
-    } else if (heat > 0.4) {
-      // Medium: yellow/green
-      return `hsl(${80 + (0.6 - heat) * 60}, 75%, 50%)`;
-    } else if (heat > 0.2) {
-      // Cool: cyan/light blue
-      return `hsl(${180 + (0.4 - heat) * 40}, 70%, 55%)`;
-    } else {
-      // Cold: blue/gray
-      return `hsl(${220 + (0.2 - heat) * 20}, 50%, 50%)`;
-    }
+    // Map heat (0-1) to palette index
+    const idx = Math.min(Math.floor(heat * (palette.length - 1)), palette.length - 2);
+    const t = (heat * (palette.length - 1)) - idx;
+
+    // Interpolate between colors
+    const c1 = palette[idx];
+    const c2 = palette[idx + 1];
+
+    // Simple hex interpolation
+    const r1 = parseInt(c1.slice(1, 3), 16);
+    const g1 = parseInt(c1.slice(3, 5), 16);
+    const b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16);
+    const g2 = parseInt(c2.slice(3, 5), 16);
+    const b2 = parseInt(c2.slice(5, 7), 16);
+
+    const r = Math.round(r1 + t * (r2 - r1));
+    const g = Math.round(g1 + t * (g2 - g1));
+    const b = Math.round(b1 + t * (b2 - b1));
+
+    return `rgb(${r}, ${g}, ${b})`;
   }
 
   private getColor(count: number, _normalized: number, text: string): string {
@@ -396,27 +445,27 @@ export class WordCloud extends LitElement {
 
   private handleWordMouseUp(word: string, e: MouseEvent) {
     e.preventDefault();
-    const pressDuration = Date.now() - this.pressStartTime;
 
-    if (pressDuration < 300) {
-      this.dispatchEvent(new CustomEvent('entity-select', {
-        detail: { entity: word, action: 'promote', count: this.entities[word] },
-        bubbles: true, composed: true
-      }));
-    } else if (pressDuration < 800) {
-      this.dispatchEvent(new CustomEvent('entity-select', {
-        detail: { entity: word, action: 'demote', count: this.entities[word] },
-        bubbles: true, composed: true
-      }));
-    } else {
-      this.dispatchEvent(new CustomEvent('entity-select', {
-        detail: { entity: word, action: 'delete', count: this.entities[word] },
-        bubbles: true, composed: true
-      }));
-    }
+    // Left click = promote/focus
+    this.dispatchEvent(new CustomEvent('entity-select', {
+      detail: { entity: word, action: 'promote', count: this.entities[word] },
+      bubbles: true, composed: true
+    }));
 
     this.selectedWord = null;
     this.pressStartTime = 0;
+  }
+
+  private handleWordRightClick(word: string, e: MouseEvent) {
+    e.preventDefault();
+
+    // Right click = BAN
+    this.dispatchEvent(new CustomEvent('entity-select', {
+      detail: { entity: word, action: 'delete', count: this.entities[word] },
+      bubbles: true, composed: true
+    }));
+
+    this.selectedWord = null;
   }
 
   render() {
@@ -441,6 +490,7 @@ export class WordCloud extends LitElement {
                     title="${word.text}: ${word.count}x${statusLabel}"
                     @mousedown=${(e: MouseEvent) => this.handleWordMouseDown(word.text, e)}
                     @mouseup=${(e: MouseEvent) => this.handleWordMouseUp(word.text, e)}
+                    @contextmenu=${(e: MouseEvent) => this.handleWordRightClick(word.text, e)}
                     @mouseleave=${() => { this.selectedWord = null; this.pressStartTime = 0; }}
                   >
                     ${word.text}
@@ -451,21 +501,12 @@ export class WordCloud extends LitElement {
 
         <div class="stats-bar">
           <div class="legend">
-            <div class="legend-item">
-              <span class="legend-dot" style="background: hsl(15, 90%, 60%)"></span>
-              Hot
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot" style="background: hsl(50, 85%, 55%)"></span>
-              Warm
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot" style="background: hsl(120, 75%, 50%)"></span>
-              Cool
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot" style="background: hsl(220, 50%, 50%); opacity: 0.6"></span>
-              Cold
+            <span style="color: #6e7681;">Click: focus</span>
+            <span style="color: #6e7681;">Right-click: BAN</span>
+            <div class="temp-scale">
+              <span class="temp-label">cold</span>
+              <div class="temp-gradient"></div>
+              <span class="temp-label">hot</span>
             </div>
           </div>
           <div>
