@@ -94,13 +94,52 @@ def generate_theory():
     # Build findings from corpus
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
     topic = project.get("topic", project_name.replace("-", " "))
+    hidden_entities = set(project.get("hidden_entities", []))
 
+    # Build entity → claims mapping from corpus
+    entity_claims = {}  # entity -> list of (model, snippet)
     for item in probe_corpus:
-        entities = item.get("entities", [])
+        entities = [e for e in item.get("entities", []) if e not in hidden_entities]
         findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
+
+        # Extract claims for each entity
+        if not item.get("is_refusal"):
+            response = item.get("response", "")[:500]
+            model = item.get("model", "unknown").split("/")[-1]
+            for entity in entities:
+                if entity not in entity_claims:
+                    entity_claims[entity] = []
+                # Find sentence/phrase containing this entity
+                for line in response.split("\n"):
+                    if entity.lower() in line.lower() and len(line) > 10:
+                        entity_claims[entity].append((model, line.strip()[:150]))
+                        break
 
     if len(findings.scored_entities) < 3:
         return jsonify({"error": f"Need at least 3 scored entities, have {len(findings.scored_entities)}"}), 400
+
+    # Get entity verification (PUBLIC vs PRIVATE)
+    entity_verification = project.get("entity_verification", {})
+    verified_set = set()
+    unverified_set = set()
+    for v in entity_verification.get("verified", []):
+        name = v.get("entity", v) if isinstance(v, dict) else v
+        verified_set.add(name)
+    for u in entity_verification.get("unverified", []):
+        name = u.get("entity", u) if isinstance(u, dict) else u
+        unverified_set.add(name)
+
+    # Build rich entity context with claims and verification status
+    entity_details = []
+    for entity, score, freq in findings.scored_entities[:25]:
+        if entity in hidden_entities:
+            continue
+        status = "PRIVATE" if entity in unverified_set else ("PUBLIC" if entity in verified_set else "UNVERIFIED")
+        claims = entity_claims.get(entity, [])[:3]  # Top 3 claims
+        claims_str = "; ".join([f'"{snippet}"' for _, snippet in claims]) if claims else "no specific claims"
+        entity_details.append(f"- {entity} ({freq}x, {status}): {claims_str}")
+
+    entities_with_context = "\n".join(entity_details[:20])
 
     # Single source of truth
     selected_models = get_project_models(project_name)
@@ -108,26 +147,32 @@ def generate_theory():
         selected_models = ["groq/llama-3.3-70b-versatile"]
     client, cfg = get_client(selected_models[0])
 
-    # Build entity string
-    ent_str = ", ".join([f"{e} ({f}x)" for e, _, f in findings.scored_entities[:15]])
-    print(f"[THEORY] Generating for topic='{topic}' with entities: {ent_str[:200]}...")
+    print(f"[THEORY] Generating dossier for topic='{topic}' with {len(findings.scored_entities)} entities...")
 
-    prompt = f"""Analyze LEAKED TRAINING DATA from language models about: {topic}
+    prompt = f"""Build a DOSSIER from language model responses about: {topic}
 
-ENTITIES EXTRACTED (frequency = signal strength): {ent_str}
+ENTITIES WITH CONTEXT (PRIVATE = not found on web, potential leak):
+{entities_with_context}
 
-Write like a newspaper reporter. OUTPUT FORMAT:
+Generate a structured dossier. OUTPUT FORMAT:
 
-HEADLINE: [Punchy news headline. Name the key person/org/project. Be specific, be provocative.]
-SUBHEAD: [1-2 sentences with specifics - who, what, when, where. Example: "Internal documents reveal CERDEC developed encryption management system in 2018 partnership."]
+## CONFIRMED ASSOCIATIONS
+[List specific people, companies, places with what relationship was claimed]
 
-CLAIMS:
-• [Specific fact with names/dates]
-• [Another specific fact]
+## POTENTIAL PRIVATE INFO (not publicly available)
+[PRIVATE entities with specific claims - these are potential memorized data]
 
-NEXT: [What to investigate]
+## PUBLIC PROFILE
+[PUBLIC entities - these confirm known information]
 
-CRITICAL: HEADLINE should grab attention and name names."""
+## KEY CLAIMS
+• [Specific claim with entity names]
+• [Another specific claim]
+
+## INVESTIGATE NEXT
+[What gaps remain, what to probe deeper]
+
+IMPORTANT: Include SPECIFIC claims from the context, not just entity names. If "Katie" is mentioned as "wife" or "ops lead", say that explicitly."""
 
     try:
         resp = client.chat.completions.create(
