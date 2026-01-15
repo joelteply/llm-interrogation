@@ -822,27 +822,31 @@ export class ProjectView extends LitElement {
           probeState.update(s => ({ ...s, questions: event.data as GeneratedQuestion[] }));
         } else if (event.type === 'response') {
           const resp = event.data as ProbeResponse;
-          probeState.update(s => {
-            // Update responses
-            const newResponses = [...s.responses, resp];
 
-            // Update entity_matches with new response data
-            const currentMatches = s.findings?.entity_matches || this.findings?.entity_matches || {};
+          // Track model context OUTSIDE state update (side effect)
+          const modelKey = resp.model;
+          if (!this._modelContext[modelKey]) this._modelContext[modelKey] = new Set();
+
+          // Pre-compute first mentions before state update
+          const entityFirstMentions: Record<string, boolean> = {};
+          for (const entity of (resp.entities || [])) {
+            entityFirstMentions[entity] = !this._modelContext[modelKey].has(entity.toLowerCase());
+          }
+
+          // Update model context with new entities
+          for (const entity of (resp.entities || [])) {
+            this._modelContext[modelKey].add(entity.toLowerCase());
+          }
+
+          // Now do pure state update
+          probeState.update(s => {
+            const newResponses = [...s.responses, resp];
+            const currentMatches = s.findings?.entity_matches || {};
             const updatedMatches = { ...currentMatches };
 
-            // Track what this model has seen (for first_mention detection)
-            const modelKey = resp.model;
-            if (!this._modelContext) this._modelContext = {};
-            if (!this._modelContext[modelKey]) this._modelContext[modelKey] = new Set();
-
-            // Add matches for each entity in this response
             for (const entity of (resp.entities || [])) {
               if (!updatedMatches[entity]) updatedMatches[entity] = [];
 
-              // Check if first mention (not in model's previous context)
-              const isFirstMention = !this._modelContext[modelKey].has(entity.toLowerCase());
-
-              // Extract context from response
               let context = '';
               if (resp.response) {
                 for (const sentence of resp.response.replace(/\n/g, '. ').split('. ')) {
@@ -859,16 +863,10 @@ export class ProjectView extends LitElement {
                 question: resp.question?.substring(0, 100) || '',
                 context,
                 is_refusal: resp.is_refusal || false,
-                is_first_mention: isFirstMention
+                is_first_mention: entityFirstMentions[entity]
               });
             }
 
-            // Update model context with entities from this response
-            for (const entity of (resp.entities || [])) {
-              this._modelContext[modelKey].add(entity.toLowerCase());
-            }
-
-            // Update findings with new entity_matches
             const updatedFindings: Findings | null = s.findings
               ? { ...s.findings, entity_matches: updatedMatches as Record<string, EntityMatch[]> }
               : null;
