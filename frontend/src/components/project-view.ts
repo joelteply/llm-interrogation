@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { navigateTo, probeState, groundTruthState, type ProbeState } from '../state';
+import { navigateTo, probeState, groundTruthState, resetProbeState, type ProbeState } from '../state';
 import { getProject, getFindings, startProbe, generateQuestions, updateProject, curateProject } from '../api';
 import type { Project, Findings, SSEEvent, GeneratedQuestion, ProbeResponse } from '../types';
 
@@ -650,6 +650,10 @@ export class ProjectView extends LitElement {
     if (!this.projectName) return;
 
     this.isLoading = true;
+
+    // CRITICAL: Reset state before loading new project to prevent cross-project leakage
+    resetProbeState();
+
     try {
       this.project = await getProject(this.projectName);
 

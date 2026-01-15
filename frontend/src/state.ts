@@ -81,7 +81,7 @@ export interface ProbeState {
   entityVerification: EntityVerification | null;  // PUBLIC vs PRIVATE entity verification
 }
 
-export const probeState = new State<ProbeState>({
+const initialProbeState: ProbeState = {
   topic: '',
   angles: [],
   selectedModels: [],  // Empty = auto-survey all models
@@ -107,7 +107,14 @@ export const probeState = new State<ProbeState>({
   activeModel: null,
   currentQuestionIndex: -1,
   entityVerification: null,
-});
+};
+
+export const probeState = new State<ProbeState>({ ...initialProbeState });
+
+// Reset probe state to initial values (call when switching projects)
+export function resetProbeState(): void {
+  probeState.set({ ...initialProbeState });
+}
 
 // Ground truth state (hidden from probed models)
 export interface GroundTruthState {
