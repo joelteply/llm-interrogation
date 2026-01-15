@@ -67,6 +67,7 @@ def create_project():
         "updated": datetime.now().isoformat(),
         "topic": data.get("topic", ""),
         "angles": data.get("angles", []),
+        "selected_models": data.get("selected_models", []),
         "sessions": [],
         "probe_corpus": [],
         "narratives": [],

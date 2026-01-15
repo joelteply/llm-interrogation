@@ -25,11 +25,11 @@ export async function getProjects(): Promise<Project[]> {
   return res.json();
 }
 
-export async function createProject(name: string, topic?: string): Promise<Project> {
+export async function createProject(name: string, topic?: string, selectedModels?: string[]): Promise<Project> {
   const res = await fetch(`${API_BASE}/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, topic: topic || name }),
+    body: JSON.stringify({ name, topic: topic || name, selected_models: selectedModels }),
   });
   if (!res.ok) throw new Error('Failed to create project');
   return res.json();

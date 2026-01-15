@@ -1,8 +1,8 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { getProjects, createProject, getFindings, deleteProject } from '../api';
+import { getProjects, createProject, getFindings, deleteProject, getAvailableModels } from '../api';
 import { navigateTo } from '../state';
-import type { Findings } from '../types';
+import type { Findings, ModelInfo } from '../types';
 import './project-card';
 import type { ProjectCardData } from './project-card';
 
@@ -40,27 +40,31 @@ export class HomePage extends LitElement {
     /* New investigation form */
     .new-form {
       display: flex;
+      flex-direction: column;
       gap: 12px;
-      max-width: 500px;
+      max-width: 600px;
       margin: 0 auto;
     }
 
-    .new-form input {
-      flex: 1;
-      padding: 14px 18px;
+    .new-form textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 16px 18px;
       font-size: 16px;
+      font-family: inherit;
       background: #161b22;
       border: 2px solid #30363d;
       border-radius: 12px;
       color: #c9d1d9;
+      resize: vertical;
     }
 
-    .new-form input:focus {
+    .new-form textarea:focus {
       outline: none;
       border-color: #58a6ff;
     }
 
-    .new-form input::placeholder {
+    .new-form textarea::placeholder {
       color: #6e7681;
     }
 
@@ -115,12 +119,21 @@ export class HomePage extends LitElement {
   `;
 
   @state() private projects: ProjectCardData[] = [];
-  @state() private newName = '';
+  @state() private newTopic = '';
   @state() private isLoading = true;
+  @state() private allModels: ModelInfo[] = [];
 
   async connectedCallback() {
     super.connectedCallback();
-    await this.loadProjects();
+    await Promise.all([this.loadProjects(), this.loadModels()]);
+  }
+
+  async loadModels() {
+    try {
+      this.allModels = await getAvailableModels();
+    } catch (e) {
+      console.error('Failed to load models:', e);
+    }
   }
 
   async loadProjects() {
@@ -161,11 +174,13 @@ export class HomePage extends LitElement {
   }
 
   async handleCreate() {
-    if (!this.newName.trim()) return;
-    const fullTopic = this.newName.trim();
+    if (!this.newTopic.trim()) return;
+    const fullTopic = this.newTopic.trim();
     const slug = fullTopic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/-+$/, '');
+    // Default to ALL available models
+    const allModelIds = this.allModels.map(m => m.id);
     try {
-      await createProject(slug, fullTopic);  // Pass full topic
+      await createProject(slug, fullTopic, allModelIds);
       navigateTo('project', slug, true);  // autostart
     } catch (e) {
       // might exist
@@ -195,18 +210,17 @@ export class HomePage extends LitElement {
         <p class="subtitle">Extract training data through statistical repetition</p>
 
         <div class="new-form">
-          <input
-            type="text"
-            placeholder="New investigation (e.g., John Smith CEO)"
-            .value=${this.newName}
-            @input=${(e: Event) => this.newName = (e.target as HTMLInputElement).value}
-            @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && this.handleCreate()}
-          />
+          <textarea
+            placeholder="Enter a topic to investigate...&#10;&#10;Example: John Smith, CEO of Acme Corp, suspected insider trading 2023"
+            .value=${this.newTopic}
+            @input=${(e: Event) => this.newTopic = (e.target as HTMLTextAreaElement).value}
+            @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && e.metaKey && this.handleCreate()}
+          ></textarea>
           <button
             class="go-btn"
             @click=${this.handleCreate}
-            ?disabled=${!this.newName.trim()}
-          >GO</button>
+            ?disabled=${!this.newTopic.trim()}
+          >Start Investigation (${this.allModels.length} models)</button>
         </div>
       </div>
 
