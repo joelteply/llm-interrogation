@@ -262,6 +262,18 @@ def get_available_models_list():
     return [m["id"] for m in _fetch_all_chat_models()]
 
 
+def validate_models(selected: list[str]) -> list[str]:
+    """Filter selected models against what APIs actually have available."""
+    available = set(get_available_models_list())
+    valid = []
+    for m in selected:
+        if m in available:
+            valid.append(m)
+        else:
+            print(f"[MODELS] Removing unavailable model: {m}")
+    return valid
+
+
 def quick_survey_models(topic: str, models_list: list = None, runs: int = 2):
     """
     Quick survey of models to find which have data.
@@ -725,8 +737,11 @@ Mix these techniques across your {question_count} questions."""
                         saved_models = proj_state.get("selected_models", [])
                         if saved_models and saved_models != models:
                             old_models = models.copy()
-                            models = saved_models
-                            yield f"data: {json.dumps({'type': 'status', 'message': f'Models updated: {models}'})}\n\n"
+                            # Validate against API - remove models that don't exist
+                            models = validate_models(saved_models)
+                            if len(models) < len(saved_models):
+                                yield f"data: {json.dumps({'type': 'warning', 'message': f'Removed {len(saved_models) - len(models)} unavailable models'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'status', 'message': f'Using {len(models)} models'})}\n\n"
                     except Exception as e:
                         yield f"data: {json.dumps({'type': 'warning', 'message': f'Failed to load project models: {e}'})}\n\n"
 
