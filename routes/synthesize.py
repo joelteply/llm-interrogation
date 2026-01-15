@@ -102,17 +102,26 @@ def generate_theory():
         entities = [e for e in item.get("entities", []) if e not in hidden_entities]
         findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
 
-        # Extract claims for each entity
+        # Extract claims for each entity - get the line AND following lines for context
         if not item.get("is_refusal"):
-            response = item.get("response", "")[:500]
+            response = item.get("response", "")[:800]
             model = item.get("model", "unknown").split("/")[-1]
+            lines = response.split("\n")
             for entity in entities:
                 if entity not in entity_claims:
                     entity_claims[entity] = []
-                # Find sentence/phrase containing this entity
-                for line in response.split("\n"):
-                    if entity.lower() in line.lower() and len(line) > 10:
-                        entity_claims[entity].append((model, line.strip()[:150]))
+                # Find line containing entity AND grab following lines for detail
+                for i, line in enumerate(lines):
+                    if entity.lower() in line.lower() and len(line) > 5:
+                        # Grab this line plus next 2 lines for context
+                        context_lines = [line.strip()]
+                        for j in range(1, 3):
+                            if i + j < len(lines) and lines[i + j].strip():
+                                next_line = lines[i + j].strip()
+                                if len(next_line) > 5 and not next_line.startswith('#'):
+                                    context_lines.append(next_line)
+                        full_context = " | ".join(context_lines)[:200]
+                        entity_claims[entity].append((model, full_context))
                         break
 
     if len(findings.scored_entities) < 3:
