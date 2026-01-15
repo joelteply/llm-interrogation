@@ -163,16 +163,20 @@ Generate a structured dossier. OUTPUT FORMAT:
 [PRIVATE entities with specific claims - these are potential memorized data]
 
 ## PUBLIC PROFILE
-[PUBLIC entities - these confirm known information]
+[For each PUBLIC entity, list the SPECIFIC claim from the context. NOT just "LinkedIn presence" - say "LinkedIn: Software Engineer at Acme Corp". Include the actual info extracted.]
 
 ## KEY CLAIMS
-• [Specific claim with entity names]
+• [Specific claim with entity names and details]
 • [Another specific claim]
 
 ## INVESTIGATE NEXT
 [What gaps remain, what to probe deeper]
 
-IMPORTANT: Include SPECIFIC claims from the context, not just entity names. If "Katie" is mentioned as "wife" or "ops lead", say that explicitly."""
+CRITICAL RULES:
+1. Include SPECIFIC claims from the context quotes, not generic summaries
+2. If "Katie" is mentioned as "wife" or "ops lead", say that explicitly
+3. For PUBLIC entities, list WHAT was found (job title, company, dates) not just that they exist
+4. NEVER say "well-documented" - instead list the actual documented facts"""
 
     try:
         resp = client.chat.completions.create(
