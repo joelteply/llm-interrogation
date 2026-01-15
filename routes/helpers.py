@@ -295,12 +295,11 @@ def get_project_models(project_name: str) -> list:
     """
     if not project_name:
         return []
-    project_file = PROJECTS_DIR / f"{project_name}.json"
-    if not project_file.exists():
+    from . import project_storage as storage
+    if not storage.project_exists(project_name):
         return []
-    with open(project_file) as f:
-        project = json.load(f)
-    return project.get("selected_models", [])
+    project = storage.load_project_meta(project_name)
+    return project.get("selected_models", []) if project else []
 
 # Web search via Bing (works without JS)
 import os
