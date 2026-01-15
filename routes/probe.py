@@ -20,6 +20,7 @@ from interrogator import (
 )
 from interrogator.synthesize import get_project_lock, synthesize_async
 from . import probe_bp
+from . import project_storage as storage
 from .helpers import (
     format_interrogator_context, is_refusal, build_initial_continuations, get_project_models,
     extract_json, get_random_technique, get_technique_info, load_technique_templates, filter_question_echoes,
@@ -336,25 +337,21 @@ Return JSON only:
                     yield f"data: {json.dumps({'type': 'warning', 'message': 'No models found with unique data about this topic. Using all available models.'})}\n\n"
 
                 # Save survey results to project (merge with existing selected_models)
-                if project_name:
-                    survey_file = PROJECTS_DIR / f"{project_name}.json"
-                    if survey_file.exists():
-                        with open(survey_file) as f:
-                            proj_data = json.load(f)
-                        proj_data["survey_results"] = survey_data
-                        proj_data["entity_sources"] = {
-                            e: dict(sources) for e, sources in entity_sources.items()
-                        }
-                        # Merge survey-selected models with any user-added models
-                        existing_models = proj_data.get("selected_models", [])
-                        merged_models = list(models)  # Start with survey picks
-                        for m in existing_models:
-                            if m not in merged_models:
-                                merged_models.append(m)
-                        proj_data["selected_models"] = merged_models
-                        models = merged_models  # Use merged list for probing
-                        with open(survey_file, 'w') as f:
-                            json.dump(proj_data, f, indent=2)
+                if project_name and storage.project_exists(project_name):
+                    proj_data = storage.load_project_meta(project_name)
+                    proj_data["survey_results"] = survey_data
+                    proj_data["entity_sources"] = {
+                        e: dict(sources) for e, sources in entity_sources.items()
+                    }
+                    # Merge survey-selected models with any user-added models
+                    existing_models = proj_data.get("selected_models", [])
+                    merged_models = list(models)  # Start with survey picks
+                    for m in existing_models:
+                        if m not in merged_models:
+                            merged_models.append(m)
+                    proj_data["selected_models"] = merged_models
+                    models = merged_models  # Use merged list for probing
+                    storage.save_project_meta(project_name, proj_data)
 
                 # Send selected models to frontend so UI updates
                 yield f"data: {json.dumps({'type': 'models_selected', 'models': models})}\n\n"
@@ -362,7 +359,6 @@ Return JSON only:
             session_response_count = 0
             findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
             session = InterrogationSession(topic=topic)  # Per-model conversation threads
-            project_file = PROJECTS_DIR / f"{project_name}.json" if project_name else None
 
             # Track models that are over capacity (503) - skip them
             over_capacity_models = set()
@@ -371,14 +367,12 @@ Return JSON only:
             model_performance = {}  # model -> {entities: int, refusals: int, unique: set}
 
             # Load existing findings
-            if accumulate and project_file and project_file.exists():
-                with open(project_file) as f:
-                    project = json.load(f)
-                for item in project.get("probe_corpus", []):
+            if accumulate and project_name and storage.project_exists(project_name):
+                corpus = storage.load_corpus(project_name)
+                for item in corpus:
                     entities = [e for e in item.get("entities", []) if e not in negative_entities]
                     findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
-                corpus_len = len(project.get("probe_corpus", []))
-                yield f"data: {json.dumps({'type': 'status', 'message': f'Loaded {corpus_len} existing responses'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': f'Loaded {len(corpus)} existing responses'})}\n\n"
 
             # Generate questions if needed
             final_questions = []
@@ -399,9 +393,8 @@ Return JSON only:
                 saved_entity_sources = {}
                 saved_entity_verification = {}  # Web verification of entities
                 saved_web_leads = {}  # Web search leads for new angles
-                if project_file and project_file.exists():
-                    with open(project_file) as f:
-                        proj = json.load(f)
+                if project_name and storage.project_exists(project_name):
+                    proj = storage.load_project_meta(project_name)
                     existing_narrative = proj.get("narrative", "")
                     existing_user_notes = proj.get("user_notes", "")
                     # Use questions_history for full context of what was asked
@@ -412,7 +405,7 @@ Return JSON only:
                     saved_entity_verification = proj.get("entity_verification", {})
                     saved_web_leads = proj.get("web_leads", {})
 
-                    for item in proj.get("probe_corpus", []):
+                    for item in storage.load_corpus(project_name):
                         q = item.get("question", "")
                         if q:
                             if q not in question_results:
@@ -436,13 +429,11 @@ Return JSON only:
                     web_leads_result = search_new_angles(topic, known_entities)
                     if "error" not in web_leads_result:
                         saved_web_leads = web_leads_result
-                        # Save to project file
-                        if project_file and project_file.exists():
-                            with open(project_file) as f:
-                                proj_data = json.load(f)
+                        # Save to project metadata
+                        if project_name and storage.project_exists(project_name):
+                            proj_data = storage.load_project_meta(project_name)
                             proj_data["web_leads"] = saved_web_leads
-                            with open(project_file, 'w') as f:
-                                json.dump(proj_data, f, indent=2)
+                            storage.save_project_meta(project_name, proj_data)
 
                 context = format_interrogator_context(
                     findings, negative_entities, positive_entities,
@@ -556,11 +547,10 @@ Mix these techniques across your {question_count} questions."""
             yield f"data: {json.dumps({'type': 'questions', 'data': final_questions})}\n\n"
 
             # SAVE questions to project so AI knows what was already asked
-            if project_file and project_file.exists() and final_questions:
+            if project_name and storage.project_exists(project_name) and final_questions:
                 try:
                     with get_project_lock():
-                        with open(project_file) as f:
-                            proj_data = json.load(f)
+                        proj_data = storage.load_project_meta(project_name)
                         # Append to existing questions (don't overwrite history)
                         existing_q = proj_data.get("questions_history", [])
                         for q in final_questions:
@@ -569,8 +559,7 @@ Mix these techniques across your {question_count} questions."""
                                 existing_q.append(q)
                         proj_data["questions_history"] = existing_q[-50:]  # Keep last 50
                         proj_data["questions"] = final_questions  # Current batch
-                        with open(project_file, 'w') as f:
-                            json.dump(proj_data, f, indent=2)
+                        storage.save_project_meta(project_name, proj_data)
                 except Exception as e:
                     print(f"[PROBE] Failed to save questions: {e}")
 
@@ -581,10 +570,9 @@ Mix these techniques across your {question_count} questions."""
                 all_responses = []
 
                 # Hot-reload: REPLACE models from project file (user may have changed selection)
-                if project_file and project_file.exists():
+                if project_name and storage.project_exists(project_name):
                     try:
-                        with open(project_file) as f:
-                            proj_state = json.load(f)
+                        proj_state = storage.load_project_meta(project_name)
                         saved_models = proj_state.get("selected_models", [])
                         if saved_models and saved_models != models:
                             old_models = models.copy()
@@ -644,11 +632,10 @@ Mix these techniques across your {question_count} questions."""
                             bg_entity_sources = {}
                             bg_entity_verification = {}
                             bg_web_leads = {}
-                            # Reload topic from project file (allows user updates mid-probe)
+                            # Reload topic from project (allows user updates mid-probe)
                             current_topic = topic
-                            if project_file and project_file.exists():
-                                with open(project_file) as f:
-                                    proj = json.load(f)
+                            if project_name and storage.project_exists(project_name):
+                                proj = storage.load_project_meta(project_name)
                                 # Use updated topic if user changed it
                                 current_topic = proj.get("topic", topic)
                                 bg_narrative = proj.get("narrative", "")
@@ -658,7 +645,7 @@ Mix these techniques across your {question_count} questions."""
                                 bg_entity_sources = proj.get("entity_sources", {})
                                 bg_entity_verification = proj.get("entity_verification", {})
                                 bg_web_leads = proj.get("web_leads", {})
-                                for item in proj.get("probe_corpus", []):
+                                for item in storage.load_corpus(project_name):
                                     q = item.get("question", "")
                                     if q and q not in bg_question_results:
                                         bg_question_results[q] = {"entities": set(), "refusals": 0, "technique": item.get("technique", "unknown"), "runs": 0}
@@ -1014,35 +1001,22 @@ NEXT: [What to verify]"""
                                     narrative = synth_resp.choices[0].message.content.strip()
                                     # Save immediately with timestamp
                                     narrative_timestamp = datetime.now().isoformat()
-                                    with get_project_lock():
-                                        if project_file.exists():
-                                            with open(project_file) as f:
-                                                proj_data = json.load(f)
+                                    if project_name and storage.project_exists(project_name):
+                                        with get_project_lock():
+                                            proj_data = storage.load_project_meta(project_name)
                                             proj_data["narrative"] = narrative
                                             proj_data["working_theory"] = narrative
                                             proj_data["narrative_updated"] = narrative_timestamp
-                                            with open(project_file, 'w') as f:
-                                                json.dump(proj_data, f, indent=2)
+                                            storage.save_project_meta(project_name, proj_data)
                                     print(f"[PROBE] *** SYNTH SUCCESS *** Saved narrative ({len(narrative)} chars)")
                                     yield f"data: {json.dumps({'type': 'narrative', 'text': narrative})}\n\n"
                                 except Exception as synth_err:
                                     print(f"[PROBE] Synthesis error (non-fatal): {synth_err}")
 
-                            # Incremental save - ATOMIC write to prevent corruption
-                            if project_name:
+                            # Incremental save - append to corpus JSONL (thread-safe)
+                            if project_name and storage.project_exists(project_name):
                                 try:
-                                    with get_project_lock():
-                                        if project_file.exists():
-                                            content = project_file.read_text()
-                                            if content.strip():
-                                                proj_data = json.loads(content)
-                                                proj_data.setdefault("probe_corpus", []).append(response_obj)
-                                                proj_data["updated"] = datetime.now().isoformat()
-                                                # Atomic write: temp file then rename
-                                                import tempfile
-                                                tmp_file = project_file.with_suffix('.tmp')
-                                                tmp_file.write_text(json.dumps(proj_data, indent=2))
-                                                tmp_file.rename(project_file)
+                                    storage.append_response(project_name, response_obj)
                                 except Exception as save_err:
                                     print(f"[SAVE] Warning: {save_err}")
 
@@ -1070,23 +1044,21 @@ NEXT: [What to verify]"""
                             positive_entities.extend([e for e in promote_list if e not in positive_entities])
                             yield f"data: {json.dumps({'type': 'curate_promote', 'entities': promote_list})}\n\n"
 
-                        # Persist curations to project file
-                        if project_name and (ban_list or promote_list):
+                        # Persist curations to project metadata
+                        if project_name and (ban_list or promote_list) and storage.project_exists(project_name):
                             with get_project_lock():
-                                if project_file.exists():
-                                    with open(project_file) as f:
-                                        proj_data = json.load(f)
-                                    proj_data["hidden_entities"] = list(negative_entities)
-                                    proj_data["promoted_entities"] = list(positive_entities)
-                                    with open(project_file, 'w') as f:
-                                        json.dump(proj_data, f, indent=2)
+                                proj_data = storage.load_project_meta(project_name)
+                                proj_data["hidden_entities"] = list(negative_entities)
+                                proj_data["promoted_entities"] = list(positive_entities)
+                                storage.save_project_meta(project_name, proj_data)
                     except Exception as e:
                         yield f"data: {json.dumps({'type': 'warning', 'message': f'Auto-curate failed: {e}'})}\n\n"
 
                 # ALSO trigger async synthesis at batch end (belt and suspenders)
                 if project_name and findings.scored_entities and len(findings.scored_entities) >= 3:
                     print(f"[PROBE] Batch complete - triggering async synthesis with {len(findings.scored_entities)} entities")
-                    synthesize_async(project_file, topic, list(findings.scored_entities[:15]))
+                    project_dir = storage.get_project_dir(project_name)
+                    synthesize_async(project_dir, topic, list(findings.scored_entities[:15]))
 
                 if not infinite_mode:
                     bg_stop.set()  # Stop background generator
@@ -1096,11 +1068,10 @@ NEXT: [What to verify]"""
                 current_narrative = ""
                 current_user_notes = ""
                 batch_web_leads = {}
-                if project_file and project_file.exists():
+                if project_name and storage.project_exists(project_name):
                     try:
                         with get_project_lock():
-                            with open(project_file) as f:
-                                proj_state = json.load(f)
+                            proj_state = storage.load_project_meta(project_name)
                         current_narrative = proj_state.get("narrative", "")
                         current_user_notes = proj_state.get("user_notes", "")
                         negative_entities = set(proj_state.get("hidden_entities", []))
@@ -1117,15 +1088,13 @@ NEXT: [What to verify]"""
                     web_leads_result = search_new_angles(topic, known_entities)
                     if "error" not in web_leads_result:
                         batch_web_leads = web_leads_result
-                        # Save to project file
-                        if project_file and project_file.exists():
+                        # Save to project metadata
+                        if project_name and storage.project_exists(project_name):
                             try:
                                 with get_project_lock():
-                                    with open(project_file) as f:
-                                        proj_data = json.load(f)
+                                    proj_data = storage.load_project_meta(project_name)
                                     proj_data["web_leads"] = batch_web_leads
-                                    with open(project_file, 'w') as f:
-                                        json.dump(proj_data, f, indent=2)
+                                    storage.save_project_meta(project_name, proj_data)
                             except Exception:
                                 pass  # Non-critical, continue
 
@@ -1137,15 +1106,13 @@ NEXT: [What to verify]"""
                         if "error" not in verification_result:
                             # Send to frontend
                             yield f"data: {json.dumps({'type': 'entity_verification', 'data': verification_result})}\n\n"
-                            # Save to project file
-                            if project_file and project_file.exists():
+                            # Save to project metadata
+                            if project_name and storage.project_exists(project_name):
                                 try:
                                     with get_project_lock():
-                                        with open(project_file) as f:
-                                            proj_data = json.load(f)
+                                        proj_data = storage.load_project_meta(project_name)
                                         proj_data["entity_verification"] = verification_result
-                                        with open(project_file, 'w') as f:
-                                            json.dump(proj_data, f, indent=2)
+                                        storage.save_project_meta(project_name, proj_data)
                                 except Exception:
                                     pass  # Non-critical, continue
 
@@ -1251,10 +1218,9 @@ def run_cycle():
 
     def generate():
         try:
-            project_file = PROJECTS_DIR / f"{project_name}.json" if project_name else None
-            if project_file and project_file.exists():
-                with open(project_file) as f:
-                    project = json.load(f)
+            if project_name and storage.project_exists(project_name):
+                project = storage.load_project_meta(project_name)
+                project["probe_corpus"] = storage.load_corpus(project_name)
             else:
                 project = {"name": project_name or "temp", "probe_corpus": [], "narratives": []}
 
@@ -1364,8 +1330,9 @@ def run_cycle():
                         except Exception as e:
                             yield f"data: {json.dumps({'type': 'error', 'message': f'Model error: {e}'})}\n\n"
 
-                if project_file:
-                    project.setdefault("probe_corpus", []).extend(all_responses)
+                if project_name and storage.project_exists(project_name):
+                    for resp in all_responses:
+                        storage.append_response(project_name, resp)
 
                 # PHASE 2: VALIDATE
                 yield f"data: {json.dumps({'type': 'phase', 'phase': 'validate', 'cycle': cycle_num})}\n\n"
@@ -1402,12 +1369,8 @@ def run_cycle():
                         state.narratives.append(narrative)
                         last_narrative = narrative
 
-                        if project_file:
-                            project.setdefault("narratives", []).append({
-                                "timestamp": datetime.now().isoformat(),
-                                "cycle": cycle_num,
-                                "narrative": narrative
-                            })
+                        if project_name and storage.project_exists(project_name):
+                            storage.append_narrative(project_name, narrative)
 
                         yield f"data: {json.dumps({'type': 'narrative', 'text': narrative, 'cycle': cycle_num})}\n\n"
 
@@ -1424,10 +1387,7 @@ def run_cycle():
                 yield f"data: {json.dumps({'type': 'grow_done', 'threads': thread_data, 'should_continue': should_continue})}\n\n"
                 yield f"data: {json.dumps({'type': 'cycle_complete', 'cycle': cycle_num})}\n\n"
 
-                if project_file:
-                    project["updated"] = datetime.now().isoformat()
-                    with open(project_file, 'w') as f:
-                        json.dump(project, f, indent=2)
+                # Metadata update handled by storage layer automatically
 
                 if not should_continue:
                     break

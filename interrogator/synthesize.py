@@ -179,17 +179,20 @@ import threading
 _project_file_lock = threading.Lock()
 
 
-def synthesize_async(project_path, topic: str, scored_entities: List[Tuple[str, float, int]]):
+def synthesize_async(project_dir, topic: str, scored_entities: List[Tuple[str, float, int]]):
     """
     Fire-and-forget narrative synthesis. Runs in background thread.
-    Saves result to project file with proper locking. Never raises.
+    Saves result to project directory with proper locking. Never raises.
     Includes web verification of top claims.
+
+    project_dir: Path to the project directory (e.g., projects/my-project/)
     """
     import json
     import os
+    from pathlib import Path
 
     print(f"[SYNTH] *** synthesize_async called with topic='{topic}', {len(scored_entities)} entities ***")
-    print(f"[SYNTH] project_path={project_path}, exists={project_path.exists() if project_path else 'None'}")
+    print(f"[SYNTH] project_dir={project_dir}, exists={project_dir.exists() if project_dir else 'None'}")
 
     if not scored_entities:
         print("[SYNTH] No scored entities, skipping")
@@ -246,18 +249,19 @@ Be specific. Quote what models actually said."""
             narrative = resp.choices[0].message.content.strip()
             print(f"[SYNTH] Got narrative response ({len(narrative)} chars): {narrative[:100]}...")
 
-            # Save to project with lock
-            print(f"[SYNTH] Acquiring lock to save to {project_path}...")
+            # Save to project metadata with lock
+            project_meta_file = Path(project_dir) / "project.json"
+            print(f"[SYNTH] Acquiring lock to save to {project_meta_file}...")
             with _project_file_lock:
-                if project_path.exists():
-                    with open(project_path) as f:
+                if project_meta_file.exists():
+                    with open(project_meta_file) as f:
                         proj = json.load(f)
                     proj["narrative"] = narrative
-                    with open(project_path, 'w') as f:
+                    with open(project_meta_file, 'w') as f:
                         json.dump(proj, f, indent=2)
-                    print(f"[SYNTH] *** SUCCESS *** Updated narrative for {project_path.name}")
+                    print(f"[SYNTH] *** SUCCESS *** Updated narrative for {project_dir.name}")
                 else:
-                    print(f"[SYNTH ERROR] Project file {project_path} does not exist!")
+                    print(f"[SYNTH ERROR] Project meta file {project_meta_file} does not exist!")
         except Exception as e:
             import traceback
             print(f"[SYNTH ERROR] Narrative generation failed: {e}")
@@ -267,15 +271,18 @@ Be specific. Quote what models actually said."""
     t.start()
 
 
-def synthesize_full_report(project_path, topic: str, findings: Findings, raw_responses: list = None, verify_web: bool = True):
+def synthesize_full_report(project_dir, topic: str, findings: Findings, raw_responses: list = None, verify_web: bool = True):
     """
     Generate a full structured intelligence report from findings.
     Uses DeepSeek or best available model for rich synthesis.
     Optionally verifies claims via web search.
     Returns the report markdown.
+
+    project_dir: Path to the project directory (e.g., projects/my-project/)
     """
     import json
     import os
+    from pathlib import Path
 
     # Build the rich synthesis prompt
     prompt = build_synthesis_prompt(topic, findings, raw_responses=raw_responses)
@@ -350,20 +357,28 @@ Focus your report on PRIVATE findings - that's the signal we're hunting."""
     if not report:
         return "Synthesis failed - no models available"
 
-    # Save to project
+    # Save to project metadata and append to narratives JSONL
     from datetime import datetime
+    project_meta_file = Path(project_dir) / "project.json"
+    narratives_file = Path(project_dir) / "narratives.jsonl"
+
     with _project_file_lock:
-        if project_path.exists():
-            with open(project_path) as f:
+        # Update metadata
+        if project_meta_file.exists():
+            with open(project_meta_file) as f:
                 proj = json.load(f)
-            proj.setdefault("narratives", []).append({
-                "timestamp": datetime.now().isoformat(),
-                "report": report,
-                "corpus_size": findings.corpus_size
-            })
-            proj["narrative"] = report  # Also set as current narrative
-            with open(project_path, 'w') as f:
+            proj["narrative"] = report  # Set as current narrative
+            with open(project_meta_file, 'w') as f:
                 json.dump(proj, f, indent=2)
+
+        # Append to narratives JSONL
+        narrative_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "narrative": report,
+            "corpus_size": findings.corpus_size
+        }
+        with open(narratives_file, 'a') as f:
+            f.write(json.dumps(narrative_entry) + "\n")
 
     return report
 

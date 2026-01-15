@@ -24,6 +24,12 @@ from routes import projects_bp, probe_bp
 app.register_blueprint(projects_bp)
 app.register_blueprint(probe_bp)
 
+# Migrate old single-file projects to new directory structure
+from routes.project_storage import migrate_all_old_projects
+migrated = migrate_all_old_projects()
+if migrated:
+    print(f"[STARTUP] Migrated {migrated} projects to new directory structure")
+
 
 # ============================================================================
 # Main routes (serve frontend)

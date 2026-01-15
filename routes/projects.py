@@ -2,40 +2,22 @@
 Project management API routes.
 
 Handles CRUD operations for investigation projects.
+Uses directory-based storage from project_storage.py.
 """
 
 import json
 from datetime import datetime
 from collections import Counter
 from flask import jsonify, request
-from config import PROJECTS_DIR
 from . import projects_bp
+from . import project_storage as storage
 
 
 @projects_bp.route("/api/projects")
 def list_projects():
     """List all projects with summaries."""
-    projects = []
-    PROJECTS_DIR.mkdir(exist_ok=True)
-    for f in PROJECTS_DIR.glob("*.json"):
-        try:
-            with open(f) as fp:
-                p = json.load(fp)
-                # Add corpus count for display
-                p["corpus_count"] = len(p.get("probe_corpus", []))
-                # Add entity summary
-                if p.get("probe_corpus"):
-                    entity_counts = Counter()
-                    for item in p["probe_corpus"]:
-                        for e in item.get("entities", []):
-                            entity_counts[e] += 1
-                    p["entities"] = dict(entity_counts.most_common(50))
-                else:
-                    p["entities"] = {}
-                projects.append(p)
-        except Exception as e:
-            print(f"[WARN] Failed to load project {f.name}: {e}")
-    return jsonify(sorted(projects, key=lambda x: x.get('updated', ''), reverse=True))
+    projects = storage.list_projects()
+    return jsonify(projects)
 
 
 @projects_bp.route("/api/projects", methods=["POST"])
@@ -55,95 +37,70 @@ def create_project():
     name = name.strip('-')  # Remove leading/trailing hyphens
     name = name[:60]  # Truncate to reasonable length
 
-    PROJECTS_DIR.mkdir(exist_ok=True)
-    project_file = PROJECTS_DIR / f"{name}.json"
-
-    if project_file.exists():
+    if storage.project_exists(name):
         return jsonify({"error": "Project already exists"}), 400
 
-    project = {
-        "name": name,
-        "created": datetime.now().isoformat(),
-        "updated": datetime.now().isoformat(),
-        "topic": data.get("topic", ""),
-        "angles": data.get("angles", []),
-        "selected_models": data.get("selected_models", []),
-        "sessions": [],
-        "probe_corpus": [],
-        "narratives": [],
-    }
-
-    with open(project_file, 'w') as f:
-        json.dump(project, f, indent=2)
-
+    project = storage.create_project(
+        name=name,
+        topic=data.get("topic", ""),
+        selected_models=data.get("selected_models", [])
+    )
     return jsonify(project)
 
 
 @projects_bp.route("/api/projects/<name>")
 def get_project(name):
-    """Get a single project."""
-    project_file = PROJECTS_DIR / f"{name}.json"
-    if not project_file.exists():
+    """Get a single project (metadata + corpus)."""
+    meta = storage.load_project_meta(name)
+    if not meta:
         return jsonify({"error": "Not found"}), 404
 
-    try:
-        with open(project_file) as f:
-            content = f.read()
-            if not content.strip():
-                # Empty file - return minimal project
-                return jsonify({"name": name, "error": "Project file was empty/corrupted", "probe_corpus": []})
-            return jsonify(json.loads(content))
-    except json.JSONDecodeError as e:
-        return jsonify({"name": name, "error": f"Corrupt project file: {e}", "probe_corpus": []})
+    # Include corpus for backward compatibility
+    meta["probe_corpus"] = storage.load_corpus(name)
+    return jsonify(meta)
 
 
 @projects_bp.route("/api/projects/<name>", methods=["PATCH"])
 def update_project(name):
     """Update a project (topic, angles, ground_truth)."""
-    project_file = PROJECTS_DIR / f"{name}.json"
-    if not project_file.exists():
+    meta = storage.load_project_meta(name)
+    if not meta:
         return jsonify({"error": "Not found"}), 404
-
-    with open(project_file) as f:
-        project = json.load(f)
 
     data = request.json
     if "topic" in data:
-        project["topic"] = data["topic"]
+        meta["topic"] = data["topic"]
     if "angles" in data:
-        project["angles"] = data["angles"]
+        meta["angles"] = data["angles"]
     if "ground_truth" in data:
-        project["ground_truth"] = data["ground_truth"]
+        meta["ground_truth"] = data["ground_truth"]
     if "hidden_entities" in data:
-        project["hidden_entities"] = data["hidden_entities"]
+        meta["hidden_entities"] = data["hidden_entities"]
     if "promoted_entities" in data:
-        project["promoted_entities"] = data["promoted_entities"]
+        meta["promoted_entities"] = data["promoted_entities"]
     if "selected_models" in data:
-        project["selected_models"] = data["selected_models"]
+        meta["selected_models"] = data["selected_models"]
     if "narrative" in data:
-        project["narrative"] = data["narrative"]
+        meta["narrative"] = data["narrative"]
     if "questions" in data:
-        project["questions"] = data["questions"]
+        meta["questions"] = data["questions"]
     if "model_emphasis" in data:
         # {"model": weight} - weight > 1 = emphasize, < 1 = deprioritize
-        project["model_emphasis"] = data["model_emphasis"]
+        meta["model_emphasis"] = data["model_emphasis"]
+    if "user_notes" in data:
+        meta["user_notes"] = data["user_notes"]
 
-    project["updated"] = datetime.now().isoformat()
-
-    with open(project_file, 'w') as f:
-        json.dump(project, f, indent=2)
-
-    return jsonify(project)
+    storage.save_project_meta(name, meta)
+    return jsonify(meta)
 
 
 @projects_bp.route("/api/projects/<name>/delete", methods=["POST", "DELETE"])
 def delete_project(name):
     """Delete a project."""
-    project_file = PROJECTS_DIR / f"{name}.json"
-    if not project_file.exists():
+    if not storage.project_exists(name):
         return jsonify({"error": "Not found"}), 404
 
-    project_file.unlink()
+    storage.delete_project(name)
     return jsonify({"success": True})
 
 
@@ -152,19 +109,15 @@ def get_findings(name):
     """Get aggregated findings for a project with scoring."""
     from interrogator import Findings, score_concept
 
-    project_file = PROJECTS_DIR / f"{name}.json"
-    if not project_file.exists():
+    meta = storage.load_project_meta(name)
+    if not meta:
         return jsonify({"error": "Not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
-
-    # Build Findings from probe_corpus
-    probe_corpus = project.get("probe_corpus", [])
-    hidden_entities = set(project.get("hidden_entities", []))
+    probe_corpus = storage.load_corpus(name)
+    hidden_entities = set(meta.get("hidden_entities", []))
 
     # Build word set from hidden entities for fuzzy matching
-    # e.g., "John Smith" -> {"joel", "spolsky"}
+    # e.g., "John Smith" -> {"john", "smith"}
     hidden_words = set()
     for h in hidden_entities:
         for word in h.lower().split():
@@ -216,7 +169,7 @@ def get_findings(name):
             })
 
     # Get topic for filtering echoes
-    topic = project.get("topic", name.replace("-", " "))
+    topic = meta.get("topic", name.replace("-", " "))
     topic_words = set(topic.lower().split())
 
     def is_topic_echo(entity):
@@ -246,7 +199,7 @@ def get_findings(name):
     }
 
     # Get model emphasis settings
-    model_emphasis = project.get("model_emphasis", {})
+    model_emphasis = meta.get("model_emphasis", {})
 
     # Calculate model performance scores for auto-emphasis
     model_performance = {}
@@ -272,7 +225,7 @@ def get_findings(name):
     }
 
     # Include entity verification (PUBLIC vs PRIVATE) if available
-    entity_verification = project.get("entity_verification", {})
+    entity_verification = meta.get("entity_verification", {})
 
     return jsonify({
         "entities": entities_dict,  # For word cloud compatibility
@@ -296,14 +249,10 @@ def get_findings(name):
 @projects_bp.route("/api/projects/<name>/transcript")
 def get_transcript(name):
     """Get past interrogation transcript for a project."""
-    project_file = PROJECTS_DIR / f"{name}.json"
-    if not project_file.exists():
+    if not storage.project_exists(name):
         return jsonify({"error": "Not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
-
-    probe_corpus = project.get("probe_corpus", [])
+    probe_corpus = storage.load_corpus(name)
 
     # Group responses by question
     questions_map = {}
@@ -342,16 +291,13 @@ def get_transcript(name):
 @projects_bp.route("/api/projects/<name>/narratives")
 def get_narratives(name):
     """Get synthesized narratives for a project."""
-    project_file = PROJECTS_DIR / f"{name}.json"
-    if not project_file.exists():
+    if not storage.project_exists(name):
         return jsonify({"error": "Not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
-
+    narratives = storage.load_narratives(name)
     return jsonify({
-        "narratives": project.get("narratives", []),
-        "count": len(project.get("narratives", []))
+        "narratives": narratives,
+        "count": len(narratives)
     })
 
 
@@ -361,19 +307,16 @@ def synthesize_project(name):
     from interrogator import Findings
     from interrogator.synthesize import synthesize_full_report
 
-    project_file = PROJECTS_DIR / f"{name}.json"
-    if not project_file.exists():
+    meta = storage.load_project_meta(name)
+    if not meta:
         return jsonify({"error": "Not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
-
-    probe_corpus = project.get("probe_corpus", [])
+    probe_corpus = storage.load_corpus(name)
     if not probe_corpus:
         return jsonify({"error": "No data to synthesize"}), 400
 
-    topic = project.get("topic", name.replace("-", " "))
-    hidden_entities = set(project.get("hidden_entities", []))
+    topic = meta.get("topic", name.replace("-", " "))
+    hidden_entities = set(meta.get("hidden_entities", []))
 
     # Build findings from corpus
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
@@ -384,10 +327,22 @@ def synthesize_project(name):
         findings.add_response(entities, model, is_refusal)
 
     # Generate report with raw responses for richer analysis
-    report = synthesize_full_report(project_file, topic, findings, raw_responses=probe_corpus)
+    project_dir = storage.get_project_dir(name)
+    report = synthesize_full_report(project_dir, topic, findings, raw_responses=probe_corpus)
 
     return jsonify({
         "report": report,
         "corpus_size": findings.corpus_size,
         "validated_entities": len(findings.validated_entities)
     })
+
+
+@projects_bp.route("/api/projects/<name>/append", methods=["POST"])
+def append_to_corpus(name):
+    """Append a response to project corpus (used by probe)."""
+    if not storage.project_exists(name):
+        return jsonify({"error": "Not found"}), 404
+
+    data = request.json
+    storage.append_response(name, data)
+    return jsonify({"success": True})
