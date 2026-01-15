@@ -133,25 +133,44 @@ def get_findings(name):
         return bool(entity_words & hidden_words)
 
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
-    # Build entity_matches: entity -> list of {model, question, context, is_refusal}
+    # Build entity_matches: entity -> list of {model, question, context, is_refusal, is_first_mention}
     entity_matches = {}
+
+    # Track what each model has seen to detect first mentions vs echoes
+    model_context = {}  # model -> set of entities already in their context
 
     # Import filter to stay in sync with findings.add_response
     from interrogator.extract import is_entity_refusal
+    from interrogator import extract_facts_fast
 
     for item in probe_corpus:
         # Filter entities the same way findings does
         entities = [e for e in item.get("entities", []) if not is_hidden(e) and not is_entity_refusal(e)]
         model = item.get("model", "unknown")
         is_refusal = item.get("is_refusal", False)
+
+        # Extract entities from question to detect echoes
+        question = item.get("question", "")
+        question_ents = set(e.lower() for e in extract_facts_fast(question))
+
         findings.add_response(entities, model, is_refusal)
 
+        # Initialize model context
+        if model not in model_context:
+            model_context[model] = set()
+
         # Track detailed matches for each entity
-        question = item.get("question", "")
         response = item.get("response", "")
         for entity in entities:
             if entity not in entity_matches:
                 entity_matches[entity] = []
+
+            # Check if this is a FIRST mention (not in model's context or question)
+            e_lower = entity.lower()
+            in_context = e_lower in model_context[model]
+            in_question = e_lower in question_ents
+            is_first_mention = not in_context and not in_question
+
             # Extract context: find sentence containing entity
             context = ""
             if response:
@@ -161,12 +180,17 @@ def get_findings(name):
                         break
                 if not context:
                     context = response[:100].strip()
+
             entity_matches[entity].append({
                 "model": model,
                 "question": question[:100],
                 "context": context,
-                "is_refusal": is_refusal
+                "is_refusal": is_refusal,
+                "is_first_mention": is_first_mention
             })
+
+        # Update model context - future responses will see these as "in context"
+        model_context[model].update(e.lower() for e in entities)
 
     # Get topic for filtering echoes
     topic = meta.get("topic", name.replace("-", " "))
