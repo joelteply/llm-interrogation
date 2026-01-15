@@ -362,6 +362,12 @@ export class FindingsPanel extends LitElement {
         detail: { entity },
         bubbles: true, composed: true
       }));
+    } else if (action === 'unban') {
+      // Remove from banned/hidden entities
+      probeState.update(s => ({
+        ...s,
+        hiddenEntities: s.hiddenEntities.filter(e => e !== entity)
+      }));
     }
 
     // Persist to backend (like Stable Diffusion positive/negative prompts)

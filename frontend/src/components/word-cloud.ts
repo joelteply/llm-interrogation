@@ -150,6 +150,14 @@ export class WordCloud extends LitElement {
       color: #f85149;
     }
 
+    .count-link.active {
+      font-weight: 700;
+      text-decoration: none;
+      background: rgba(255,255,255,0.1);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
     .legend {
       display: flex;
       gap: 12px;
@@ -586,9 +594,19 @@ export class WordCloud extends LitElement {
     // If we already handled via long press, skip
     if (this.pressStartTime === 0) return;
 
-    // Left click = toggle promote/focus
+    // Determine action based on current state
+    const isBanned = this.hiddenEntities.includes(word);
     const isPromoted = this.promotedEntities.includes(word);
-    const action = isPromoted ? 'unpromote' : 'promote';
+
+    let action: string;
+    if (isBanned) {
+      // Clicking banned entity unbans it
+      action = 'unban';
+    } else if (isPromoted) {
+      action = 'unpromote';
+    } else {
+      action = 'promote';
+    }
 
     this.dispatchEvent(new CustomEvent('entity-select', {
       detail: { entity: word, action, count: this.entities[word] },
@@ -642,19 +660,33 @@ export class WordCloud extends LitElement {
     }
   }
 
+  @state()
+  private showPromotedList = false;
+
+  @state()
+  private showBannedList = false;
+
   private handlePromotedClick() {
-    this.dispatchEvent(new CustomEvent('edit-promoted', {
-      bubbles: true,
-      composed: true,
-      detail: { entities: this.promotedEntities }
-    }));
+    this.showPromotedList = !this.showPromotedList;
+    this.showBannedList = false;
   }
 
   private handleBannedClick() {
-    this.dispatchEvent(new CustomEvent('edit-banned', {
-      bubbles: true,
-      composed: true,
-      detail: { entities: this.hiddenEntities }
+    this.showBannedList = !this.showBannedList;
+    this.showPromotedList = false;
+  }
+
+  private handleUnpromote(entity: string) {
+    this.dispatchEvent(new CustomEvent('entity-select', {
+      detail: { entity, action: 'unpromote' },
+      bubbles: true, composed: true
+    }));
+  }
+
+  private handleUnban(entity: string) {
+    this.dispatchEvent(new CustomEvent('entity-select', {
+      detail: { entity, action: 'unban' },
+      bubbles: true, composed: true
     }));
   }
 
@@ -717,21 +749,49 @@ export class WordCloud extends LitElement {
 
   render() {
     const signalCount = this.words.filter(w => w.count >= this.signalThreshold).length;
-    const noiseCount = this.words.filter(w => w.count < this.signalThreshold).length;
+
+    // Filter words based on active filter
+    let displayWords = this.words;
+    let filterLabel = '';
+    if (this.showPromotedList) {
+      displayWords = this.words.filter(w => this.promotedEntities.includes(w.text));
+      filterLabel = 'PROMOTED';
+    } else if (this.showBannedList) {
+      // For banned, we need to show them even though they're hidden from main view
+      // Create temporary word items for banned entities
+      displayWords = this.hiddenEntities.map((text, i) => ({
+        text,
+        count: 0,
+        size: 18,
+        x: 50 + (i % 5) * 120,
+        y: 30 + Math.floor(i / 5) * 35,
+        color: '#f85149',
+        heat: 0
+      }));
+      filterLabel = 'BANNED';
+    }
 
     return html`
       <div class="cloud-container">
-        ${this.words.length === 0
+        ${filterLabel ? html`
+          <div style="position: absolute; top: 8px; left: 12px; font-size: 11px; color: ${filterLabel === 'PROMOTED' ? '#3fb950' : '#f85149'}; font-weight: 600; z-index: 50;">
+            ${filterLabel} — click to ${filterLabel === 'PROMOTED' ? 'unfocus' : 'unban'}
+          </div>
+        ` : ''}
+        ${displayWords.length === 0 && !filterLabel
           ? html`<div class="empty">Run probes to see extracted entities</div>`
+          : displayWords.length === 0 && filterLabel
+          ? html`<div class="empty">No ${filterLabel.toLowerCase()} entities</div>`
           : html`
               <div class="glow-overlay"></div>
-              ${this.words.map(word => {
+              ${displayWords.map(word => {
                 const isPromoted = this.promotedEntities.includes(word.text);
+                const isBanned = this.hiddenEntities.includes(word.text);
                 const isDeadEnd = this.deadEnds.includes(word.text);
                 const isLiveThread = this.liveThreads.includes(word.text);
                 return html`
                   <span
-                    class="word ${word.count >= this.signalThreshold ? 'signal' : ''} ${this.selectedWord === word.text ? 'selected' : ''} ${isPromoted ? 'promoted' : ''} ${isDeadEnd ? 'dead-end' : ''} ${isLiveThread && !isPromoted ? 'live-thread' : ''}"
+                    class="word ${word.count >= this.signalThreshold ? 'signal' : ''} ${this.selectedWord === word.text ? 'selected' : ''} ${isPromoted ? 'promoted' : ''} ${isBanned ? 'dead-end' : ''} ${isDeadEnd && !isBanned ? 'dead-end' : ''} ${isLiveThread && !isPromoted ? 'live-thread' : ''}"
                     style="font-size: ${word.size}px; color: ${word.color}; left: ${word.x}px; top: ${word.y}px;"
                     @mouseenter=${(e: MouseEvent) => this.handleWordHover(word.text, e)}
                     @mousedown=${(e: MouseEvent) => this.handleWordMouseDown(word.text, e)}
@@ -759,8 +819,8 @@ export class WordCloud extends LitElement {
           </div>
           <div class="counts">
             ${this.liveThreads.length} live / ${this.deadEnds.length} dead / ${signalCount} signal
-            ${this.promotedEntities.length > 0 ? html` / <span class="count-link promoted" @click=${this.handlePromotedClick}>${this.promotedEntities.length} promoted</span>` : ''}
-            ${this.hiddenEntities.length > 0 ? html` / <span class="count-link banned" @click=${this.handleBannedClick}>${this.hiddenEntities.length} banned</span>` : ''}
+            ${this.promotedEntities.length > 0 ? html` / <span class="count-link promoted ${this.showPromotedList ? 'active' : ''}" @click=${this.handlePromotedClick}>${this.promotedEntities.length} promoted</span>` : ''}
+            ${this.hiddenEntities.length > 0 ? html` / <span class="count-link banned ${this.showBannedList ? 'active' : ''}" @click=${this.handleBannedClick}>${this.hiddenEntities.length} banned</span>` : ''}
           </div>
         </div>
       </div>
