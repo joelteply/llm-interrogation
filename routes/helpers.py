@@ -302,12 +302,18 @@ def get_project_models(project_name: str) -> list:
         project = json.load(f)
     return project.get("selected_models", [])
 
-# Try to import DuckDuckGo search
-try:
-    from duckduckgo_search import DDGS
-    SEARCH_AVAILABLE = True
-except ImportError:
-    SEARCH_AVAILABLE = False
+# Web search for verification (disabled by default - requires headless browser or API)
+# Set ENABLE_WEB_VERIFY=1 to enable if you have a working search setup
+import os
+SEARCH_AVAILABLE = os.environ.get("ENABLE_WEB_VERIFY") == "1"
+SEARCH_ENGINE = "google" if SEARCH_AVAILABLE else None
+
+if SEARCH_AVAILABLE:
+    try:
+        from googlesearch import search as google_search
+    except ImportError:
+        SEARCH_AVAILABLE = False
+        SEARCH_ENGINE = None
 
 
 def research_topic(topic: str, max_results: int = 8) -> str:
@@ -499,42 +505,60 @@ def verify_entities(entities: list, topic: str, max_entities: int = 10) -> dict:
     Returns dict with verified/unverified/unknown categories.
     """
     if not SEARCH_AVAILABLE:
-        print(f"[WEB] verify_entities: DuckDuckGo not available")
+        print(f"[WEB] verify_entities: No search engine available")
         return {"error": "Web search not available", "verified": [], "unverified": [], "unknown": entities}
 
-    print(f"[WEB] verify_entities: Checking {len(entities[:max_entities])} entities against web...")
+    print(f"[WEB] verify_entities: Checking {len(entities[:max_entities])} entities via {SEARCH_ENGINE}...")
     verified = []
     unverified = []
     unknown = []
 
     for entity in entities[:max_entities]:
         try:
-            # Search for entity + topic context
             query = f'"{entity}" {topic}'
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=3))
 
-            if results:
-                # Check if entity appears in results
-                all_text = " ".join([
-                    r.get("title", "") + " " + r.get("body", r.get("snippet", ""))
-                    for r in results
-                ]).lower()
+            if SEARCH_ENGINE == "google":
+                # Use googlesearch with advanced=True for metadata
+                results = list(google_search(query, num_results=3, advanced=True))
+                if results:
+                    all_text = " ".join([
+                        (r.title or "") + " " + (r.description or "")
+                        for r in results
+                    ]).lower()
+                    source = results[0].title[:50] if results[0].title else ""
+                else:
+                    all_text = ""
+                    source = ""
+            else:
+                # Fallback to DDG
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(query, max_results=3))
+                if results:
+                    all_text = " ".join([
+                        r.get("title", "") + " " + r.get("body", r.get("snippet", ""))
+                        for r in results
+                    ]).lower()
+                    source = results[0].get("title", "")[:50]
+                else:
+                    all_text = ""
+                    source = ""
 
+            if all_text:
                 entity_words = entity.lower().split()
                 matches = sum(1 for w in entity_words if w in all_text)
 
-                if matches >= len(entity_words) * 0.5:  # At least 50% of words found
+                if matches >= len(entity_words) * 0.5:
                     verified.append({
                         "entity": entity,
-                        "source": results[0].get("title", "")[:50],
+                        "source": source,
                         "confidence": "high" if matches == len(entity_words) else "medium"
                     })
                 else:
                     unverified.append({"entity": entity, "reason": "Not found in search results"})
             else:
-                unknown.append(entity)
+                unverified.append({"entity": entity, "reason": "No search results"})
         except Exception as e:
+            print(f"[WEB] verify_entities error for '{entity}': {e}")
             unknown.append(entity)
 
     summary = f"{len(verified)} PUBLIC, {len(unverified)} PRIVATE, {len(unknown)} unknown"
