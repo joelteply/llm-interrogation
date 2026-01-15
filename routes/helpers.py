@@ -194,6 +194,30 @@ def get_random_technique() -> dict:
     }
 
 
+def get_technique_info(technique_id: str) -> dict:
+    """Look up template info for a specific technique ID."""
+    templates = load_technique_templates()
+
+    # Try exact match first, then try stripping common prefixes
+    variants = [technique_id]
+    for prefix in ['fbi_', 'scharff_', 'cognitive_', 'mossad_']:
+        if technique_id.startswith(prefix):
+            variants.append(technique_id[len(prefix):])
+
+    for template in templates:
+        techniques = template.get("techniques", {})
+        for variant in variants:
+            if variant in techniques:
+                return {
+                    "template": template.get("name", "unknown"),
+                    "technique": technique_id,
+                    "prompt": techniques[variant].get("prompt", ""),
+                    "color": template.get("color", "#8b949e"),
+                }
+    # Fallback if technique not found
+    return {"template": "custom", "technique": technique_id, "prompt": "", "color": "#8b949e"}
+
+
 def get_technique_instruction() -> str:
     """Get a random technique instruction for question generation."""
     tech = get_random_technique()

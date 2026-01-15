@@ -86,8 +86,7 @@ export class QuestionQueue extends LitElement {
     }
 
     .question-item.active {
-      border-color: var(--accent-blue, #58a6ff);
-      background: rgba(88, 166, 255, 0.08);
+      box-shadow: inset 0 0 0 2px rgba(88, 166, 255, 0.4);
     }
 
     .question-item.completed {
@@ -99,21 +98,21 @@ export class QuestionQueue extends LitElement {
       align-items: center;
       gap: 6px;
       font-size: 11px;
-      color: var(--accent-blue, #58a6ff);
+      color: var(--text-muted, #6e7681);
       margin-top: 6px;
     }
 
     .pulse {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
-      background: var(--accent-blue, #58a6ff);
-      animation: pulse 1.5s infinite;
+      background: var(--text-muted, #6e7681);
+      animation: pulse 2s infinite;
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 0.4; transform: scale(0.8); }
-      50% { opacity: 1; transform: scale(1.2); }
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.7; }
     }
 
     .question-index {
@@ -148,11 +147,10 @@ export class QuestionQueue extends LitElement {
     .template-badge {
       display: inline-flex;
       align-items: center;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
       font-weight: 600;
-      margin-bottom: 4px;
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -162,11 +160,11 @@ export class QuestionQueue extends LitElement {
     .technique-tag {
       display: inline-flex;
       align-items: center;
-      padding: 1px 6px;
+      padding: 2px 8px;
       background: var(--bg-tertiary, #21262d);
       border-radius: 9999px;
-      font-size: 9px;
-      color: var(--text-muted, #6e7681);
+      font-size: 10px;
+      color: var(--text-secondary, #8b949e);
     }
 
     .technique-tag.scharff {
@@ -276,9 +274,10 @@ export class QuestionQueue extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this.loadTemplates();  // Load template colors from API
     this._unsubscribe = probeState.subscribe((s) => {
       this._probeState = s;
-      this.requestUpdate();  // Force re-render when questions arrive
+      this.requestUpdate();
     });
   }
 
@@ -307,13 +306,52 @@ export class QuestionQueue extends LitElement {
     return name.replace('-instant', '').split('-').slice(0, 3).join('-');
   }
 
-  private getTemplateBadgeStyle(color?: string): string {
-    const c = color || '#8b949e';
-    // Convert hex to rgba for background
-    const r = parseInt(c.slice(1, 3), 16);
-    const g = parseInt(c.slice(3, 5), 16);
-    const b = parseInt(c.slice(5, 7), 16);
-    return `background: rgba(${r}, ${g}, ${b}, 0.15); border: 1px solid rgba(${r}, ${g}, ${b}, 0.3); color: ${c};`;
+  // Loaded from /api/techniques - maps template name to color
+  private static templateCache: Record<string, string> = {};
+  private static templateCacheLoaded = false;
+
+  private async loadTemplates() {
+    if (QuestionQueue.templateCacheLoaded) return;
+    try {
+      const resp = await fetch('/api/techniques');
+      const templates = await resp.json();
+      for (const t of templates) {
+        QuestionQueue.templateCache[t.name] = t.color;
+      }
+      QuestionQueue.templateCacheLoaded = true;
+      this.requestUpdate();
+    } catch (e) {
+      console.warn('Failed to load templates:', e);
+    }
+  }
+
+  private parseQuestion(q: GeneratedQuestion): { template: string; technique: string; color: string } {
+    let template = q.template || '';
+    let technique = q.technique || '';
+
+    // If technique contains "/", split it
+    if (technique.includes('/')) {
+      const parts = technique.split('/');
+      if (!template) template = parts[0];
+      technique = parts[1] || parts[0];
+    }
+
+    // Strip prefixes and clean up technique for display
+    const cleanTechnique = technique
+      .replace(/^[a-z]+_/, '')  // Strip any prefix like fbi_, scharff_, etc
+      .replace(/_/g, ' ');
+
+    // Color from: explicit q.color > cached template color > gray fallback
+    const color = q.color || QuestionQueue.templateCache[template] || '#8b949e';
+
+    return { template, technique: cleanTechnique || 'custom', color };
+  }
+
+  private getTemplateBadgeStyle(color: string): string {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `background: rgba(${r}, ${g}, ${b}, 0.15); border: 1px solid rgba(${r}, ${g}, ${b}, 0.3); color: ${color};`;
   }
 
   private removeQuestion(index: number) {
@@ -432,11 +470,6 @@ export class QuestionQueue extends LitElement {
                 <div class="question-item ${isActive ? 'active' : ''}">
                   <div class="question-header">
                     <span class="question-index">${i + 1}</span>
-                    ${q.template ? html`
-                      <span class="template-badge" style=${this.getTemplateBadgeStyle(q.color)}>
-                        ${q.template}
-                      </span>
-                    ` : null}
                     <div class="question-actions">
                       ${!isRunning ? html`
                         <button
@@ -460,12 +493,18 @@ export class QuestionQueue extends LitElement {
                   </div>
                   <div class="question-text">${q.question}</div>
                   <div class="question-meta">
-                    <span class="technique-tag ${this.getTechniqueClass(q.technique)}">
-                      ${this.getTechniqueName(q.technique)}
-                    </span>
-                    ${q.target_entity
-                      ? html`<span class="target-entity">→ ${q.target_entity}</span>`
-                      : null}
+                    ${(() => {
+                      const { template, technique, color } = this.parseQuestion(q);
+                      return html`
+                        ${template ? html`
+                          <span class="template-badge" style=${this.getTemplateBadgeStyle(color)}>
+                            ${template}
+                          </span>
+                        ` : null}
+                        <span class="technique-tag">${technique}</span>
+                      `;
+                    })()}
+                    ${q.target_entity ? html`<span class="target-entity">→ ${q.target_entity}</span>` : null}
                   </div>
                   ${isActive && activeModel ? html`
                     <div class="active-indicator">

@@ -22,7 +22,7 @@ from interrogator.synthesize import get_project_lock, synthesize_async
 from . import probe_bp
 from .helpers import (
     format_interrogator_context, is_refusal, build_initial_continuations, get_project_models,
-    extract_json, get_random_technique, load_technique_templates, filter_question_echoes,
+    extract_json, get_random_technique, get_technique_info, load_technique_templates, filter_question_echoes,
     get_all_techniques_for_prompt, rephrase_for_indirect, sanitize_for_json,
     build_novel_findings, verify_entities, select_models_for_round, search_new_angles
 )
@@ -473,7 +473,7 @@ Return JSON only:
                 for _ in range(min(question_count, 3)):
                     tech = get_random_technique()
                     techniques_used.append(tech)  # Keep full dict for template/color
-                    technique_prompts.append(f"- {tech['template']}/{tech['technique']}: {tech['prompt'][:150]}...")
+                    technique_prompts.append(f"- {tech['technique']}: {tech['prompt'][:150]}...")
                 if technique_prompts:
                     technique_instruction = f"""
 
@@ -530,10 +530,11 @@ Mix these techniques across your {question_count} questions."""
                             yield f"data: {json.dumps({'type': 'status', 'message': f'AI response (first 500 chars): {content[:500]}'})}\n\n"
                             yield f"data: {json.dumps({'type': 'error', 'message': 'AI did not return valid JSON. Check response above.', 'fatal': True})}\n\n"
                             return
-                    # Add technique template info to questions (fresh random for each)
+                    # Add technique template info to questions (match template to actual technique)
                     for q in final_questions:
-                        if isinstance(q, dict):
-                            tech = get_random_technique()
+                        if isinstance(q, dict) and 'template' not in q:
+                            technique_id = q.get('technique', 'custom')
+                            tech = get_technique_info(technique_id)
                             q['template'] = tech.get('template', 'unknown')
                             q['color'] = tech.get('color', '#8b949e')
                 except Exception as e:
@@ -614,6 +615,7 @@ Mix these techniques across your {question_count} questions."""
                 question_queue = list(final_questions)  # Copy
                 questions_asked_this_batch = 0
                 model_idx = 0
+                highest_completed_q_idx = -1  # Track highest completed for UI progress
 
                 # BACKGROUND QUESTION GENERATOR - runs in parallel, constantly filling queue
                 import threading
@@ -697,7 +699,7 @@ Mix these techniques across your {question_count} questions."""
                             bg_techniques = []
                             for _ in range(3):
                                 tech = get_random_technique()
-                                bg_techniques.append(f"- {tech['template']}/{tech['technique']}: {tech['prompt'][:100]}...")
+                                bg_techniques.append(f"- {tech['technique']}: {tech['prompt'][:100]}...")
 
                             top_entities = [e for e, _, _ in findings.scored_entities[:10]]
 
@@ -822,6 +824,13 @@ Each question MUST contain at least one entity name from above."""
                     if bg_questions:
                         new_qs = list(bg_questions)
                         bg_questions.clear()
+                        # Add template/color to each question (match template to actual technique)
+                        for q in new_qs:
+                            if isinstance(q, dict) and 'template' not in q:
+                                technique_id = q.get('technique', 'custom')
+                                tech = get_technique_info(technique_id)
+                                q['template'] = tech.get('template', 'unknown')
+                                q['color'] = tech.get('color', '#8b949e')
                         question_queue.extend(new_qs)
                         final_questions.extend(new_qs)
                         print(f"[PROBE] Got {len(new_qs)} questions from background")
@@ -855,6 +864,10 @@ Each question MUST contain at least one entity name from above."""
 
                     print(f"[PROBE] Firing {len(batch)} questions in parallel...")
                     yield f"data: {json.dumps({'type': 'status', 'message': f'Asking {len(batch)} questions in parallel...'})}\n\n"
+
+                    # Tell UI which question we're starting with (use first in batch)
+                    first_q_idx = batch[0][0] if batch else 0
+                    yield f"data: {json.dumps({'type': 'run_start', 'question_index': first_q_idx})}\n\n"
 
                     # Fire all in parallel
                     with ThreadPoolExecutor(max_workers=len(batch)) as executor:
@@ -914,6 +927,12 @@ Each question MUST contain at least one entity name from above."""
 
                             yield f"data: {json.dumps({'type': 'response', 'data': response_obj})}\n\n"
 
+                            # Update queue to show progress (only advance forward, never backward)
+                            if result['q_idx'] > highest_completed_q_idx:
+                                highest_completed_q_idx = result['q_idx']
+                                # Tell UI to advance to next pending question
+                                yield f"data: {json.dumps({'type': 'run_start', 'question_index': highest_completed_q_idx + 1})}\n\n"
+
                             responses_since_synth += 1
                             print(f"[PROBE] Response #{responses_since_synth}, scored_entities={len(findings.scored_entities) if findings.scored_entities else 0}")
 
@@ -924,37 +943,31 @@ Each question MUST contain at least one entity name from above."""
                                     print(f"[PROBE] Triggering SYNCHRONOUS synthesis with {len(findings.scored_entities)} entities...")
                                     # Use first available model from project (prefer llama/deepseek)
                                     synth_model = None
-                                    for m in selected_models:
+                                    for m in round_models:
                                         if 'llama' in m.lower() or 'deepseek' in m.lower():
                                             synth_model = m
                                             break
                                     if not synth_model:
-                                        synth_model = selected_models[0] if selected_models else "groq/llama-3.1-8b-instant"
+                                        synth_model = round_models[0] if round_models else "groq/llama-3.1-8b-instant"
 
                                     synth_client, synth_cfg = get_client(synth_model)
                                     ent_str = ", ".join([f"{e} ({f}x)" for e, _, f in list(findings.scored_entities[:15])])
-                                    synth_prompt = f"""You are analyzing LEAKED TRAINING DATA from language models.
+                                    synth_prompt = f"""Analyze LEAKED TRAINING DATA from language models about: {topic}
 
-Models were trained on private data then RLHF'd to hide it. We extracted entities that slipped through:
+ENTITIES EXTRACTED (frequency = signal strength): {ent_str}
 
-TOPIC: {topic}
-ENTITIES: {ent_str}
+Write like a newspaper reporter. OUTPUT FORMAT:
 
-OUTPUT FORMAT (follow EXACTLY):
-
-HEADLINE: [One punchy line - the MOST provocative specific finding, name a person/org/project]
-SUBHEAD: [2-3 sentences expanding on the headline with specific details]
+HEADLINE: [Punchy news headline. Name the key person/org/project. Be specific, be provocative.]
+SUBHEAD: [1-2 sentences with specifics - who, what, when, where. Example: "Internal documents reveal CERDEC developed encryption management system in 2018 partnership."]
 
 CLAIMS:
-• [Specific leaked fact #1 with names/dates]
-• [Specific leaked fact #2]
-• [etc]
+• [Specific fact with names/dates]
+• [Another specific fact]
 
-CONFIDENCE: [Which entities seem real vs hallucinated based on frequency]
+NEXT: [What to investigate]
 
-NEXT: [What to probe deeper on]
-
-IMPORTANT: The HEADLINE must be specific and provocative - name names, state allegations. Not generic."""
+CRITICAL: HEADLINE should grab attention and name names."""
                                     synth_resp = synth_client.chat.completions.create(
                                         model=synth_cfg["model"],
                                         messages=[{"role": "user", "content": synth_prompt}],
@@ -1129,7 +1142,7 @@ IMPORTANT: The HEADLINE must be specific and provocative - name names, state all
                 for _ in range(min(question_count, 3)):
                     tech = get_random_technique()
                     techniques_used.append(tech)  # Keep full dict for template/color
-                    technique_prompts.append(f"- {tech['template']}/{tech['technique']}: {tech['prompt'][:150]}...")
+                    technique_prompts.append(f"- {tech['technique']}: {tech['prompt'][:150]}...")
                 if technique_prompts:
                     technique_instruction = f"""
 
@@ -1165,10 +1178,11 @@ Mix these techniques across your {question_count} questions."""
                             yield f"data: {json.dumps({'type': 'error', 'message': f'End-of-round question generation failed to parse. Raw: {content[:200]}...'})}\n\n"
                             final_questions = []
 
-                    # Add technique template info to questions (fresh random for each)
+                    # Add technique template info to questions (match template to actual technique)
                     for q in final_questions:
-                        if isinstance(q, dict):
-                            tech = get_random_technique()
+                        if isinstance(q, dict) and 'template' not in q:
+                            technique_id = q.get('technique', 'custom')
+                            tech = get_technique_info(technique_id)
                             q['template'] = tech.get('template', 'unknown')
                             q['color'] = tech.get('color', '#8b949e')
                 except Exception as e:

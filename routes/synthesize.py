@@ -116,28 +116,22 @@ def generate_theory():
     ent_str = ", ".join([f"{e} ({f}x)" for e, _, f in findings.scored_entities[:15]])
     print(f"[THEORY] Generating for topic='{topic}' with entities: {ent_str[:200]}...")
 
-    prompt = f"""You are analyzing LEAKED TRAINING DATA from language models.
+    prompt = f"""Analyze LEAKED TRAINING DATA from language models about: {topic}
 
-Models were trained on private data then RLHF'd to hide it. We extracted entities that slipped through:
+ENTITIES EXTRACTED (frequency = signal strength): {ent_str}
 
-TOPIC: {topic}
-ENTITIES: {ent_str}
+Write like a newspaper reporter. OUTPUT FORMAT:
 
-OUTPUT FORMAT (follow EXACTLY):
-
-HEADLINE: [One punchy line - the MOST provocative specific finding, name a person/org/project]
-SUBHEAD: [2-3 sentences expanding on the headline with specific details]
+HEADLINE: [Punchy news headline. Name the key person/org/project. Be specific, be provocative.]
+SUBHEAD: [1-2 sentences with specifics - who, what, when, where. Example: "Internal documents reveal CERDEC developed encryption management system in 2018 partnership."]
 
 CLAIMS:
-• [Specific leaked fact #1 with names/dates]
-• [Specific leaked fact #2]
-• [etc]
+• [Specific fact with names/dates]
+• [Another specific fact]
 
-CONFIDENCE: [Which entities seem real vs hallucinated based on frequency]
+NEXT: [What to investigate]
 
-NEXT: [What to probe deeper on]
-
-IMPORTANT: The HEADLINE must be specific and provocative - name names, state allegations. Not generic."""
+CRITICAL: HEADLINE should grab attention and name names."""
 
     try:
         resp = client.chat.completions.create(

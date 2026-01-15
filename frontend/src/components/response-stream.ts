@@ -934,13 +934,18 @@ export class ResponseStream extends LitElement {
     // Fallback: extract from content using scoring
     const skipPatterns = [
       /list specific/i, /your task/i, /format:/i, /output/i,
-      /be specific/i, /extract/i, /analyze/i, /cross-reference/i
+      /be specific/i, /extract/i, /analyze/i, /cross-reference/i,
+      /^#+\s/, // Skip markdown headers
+      /^project\/program/i, /^people\/org/i, /^dates/i, /^locations/i,
+      /^key relation/i, /^unique claim/i, /^pattern/i, /^question/i,
+      /names surfaced/i, /organizations/i, /timeline/i
     ];
 
     const lines = narrative.split('\n');
     for (const line of lines) {
-      let content = line.trim().replace(/\*\*/g, '').replace(/^[•\-\*]\s*/, '');
-      if (content.length > 25 && !content.endsWith(':') && !skipPatterns.some(p => p.test(content))) {
+      let content = line.trim().replace(/\*\*/g, '').replace(/^[•\-\*]\s*/, '').replace(/^#+\s*/, '');
+      // Skip headers, short lines, lines ending with colon
+      if (content.length > 25 && !content.endsWith(':') && !content.startsWith('#') && !skipPatterns.some(p => p.test(content))) {
         return { headline: content.substring(0, 150), subhead: '' };
       }
     }
@@ -1091,7 +1096,7 @@ export class ResponseStream extends LitElement {
                 <span>
                   AI's current theory
                   ${this._probeState.narrativeUpdated ? html`
-                    <span style="font-weight: 400; margin-left: 8px;">
+                    <span style="font-weight: 400; margin-left: 8px;" data-tick=${this._tick}>
                       Updated ${this.formatTimeAgo(this._probeState.narrativeUpdated)}
                     </span>
                   ` : ''}
