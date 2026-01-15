@@ -10,6 +10,7 @@ from flask import jsonify, request
 from config import PROJECTS_DIR, get_client
 from interrogator import Findings, build_synthesis_prompt
 from . import probe_bp
+from . import project_storage as storage
 from .helpers import get_project_models, extract_json
 
 
@@ -22,17 +23,16 @@ def synthesize():
     if not project_name:
         return jsonify({"error": "Project required"}), 400
 
-    project_file = PROJECTS_DIR / f"{project_name}.json"
-    if not project_file.exists():
+    if not storage.project_exists(project_name):
         return jsonify({"error": "Project not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
+    project = storage.load_project_meta(project_name)
+    probe_corpus = storage.load_corpus(project_name)
 
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
     hidden_entities = set(project.get("hidden_entities", []))
 
-    for item in project.get("probe_corpus", []):
+    for item in probe_corpus:
         entities = [e for e in item.get("entities", []) if e not in hidden_entities]
         findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
 
@@ -57,15 +57,12 @@ def synthesize():
         )
         narrative = resp.choices[0].message.content
 
-        project.setdefault("narratives", []).append({
-            "timestamp": datetime.now().isoformat(),
-            "narrative": narrative,
-            "entity_count": len(findings.validated_entities)
-        })
-        project["updated"] = datetime.now().isoformat()
+        # Append to narratives JSONL
+        storage.append_narrative(project_name, narrative)
 
-        with open(project_file, 'w') as f:
-            json.dump(project, f, indent=2)
+        # Update metadata
+        project["updated"] = datetime.now().isoformat()
+        storage.save_project_meta(project_name, project)
 
         return jsonify({
             "narrative": narrative,
@@ -88,18 +85,17 @@ def generate_theory():
     if not project_name:
         return jsonify({"error": "Project required"}), 400
 
-    project_file = PROJECTS_DIR / f"{project_name}.json"
-    if not project_file.exists():
+    if not storage.project_exists(project_name):
         return jsonify({"error": "Project not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
+    project = storage.load_project_meta(project_name)
+    probe_corpus = storage.load_corpus(project_name)
 
     # Build findings from corpus
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
     topic = project.get("topic", project_name.replace("-", " "))
 
-    for item in project.get("probe_corpus", []):
+    for item in probe_corpus:
         entities = item.get("entities", [])
         findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
 
@@ -147,9 +143,7 @@ CRITICAL: HEADLINE should grab attention and name names."""
         project["narrative"] = narrative
         project["working_theory"] = narrative
         project["narrative_updated"] = datetime.now().isoformat()
-        project["updated"] = datetime.now().isoformat()
-        with open(project_file, 'w') as f:
-            json.dump(project, f, indent=2)
+        storage.save_project_meta(project_name, project)
 
         print(f"[THEORY] *** SUCCESS *** Saved narrative to {project_name}")
         return jsonify({"narrative": narrative, "entity_count": len(findings.scored_entities)})
@@ -170,17 +164,16 @@ def auto_curate():
     if not project_name:
         return jsonify({"error": "Project required"}), 400
 
-    project_file = PROJECTS_DIR / f"{project_name}.json"
-    if not project_file.exists():
+    if not storage.project_exists(project_name):
         return jsonify({"error": "Project not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
+    project = storage.load_project_meta(project_name)
+    probe_corpus = storage.load_corpus(project_name)
 
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
     topic = project.get("topic", project_name.replace("-", " "))
 
-    for item in project.get("probe_corpus", []):
+    for item in probe_corpus:
         entities = item.get("entities", [])
         findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
 
@@ -194,9 +187,6 @@ def auto_curate():
         f"{r['subject']} {r['predicate']} {r['object']} (conf:{r.get('confidence', 50)}%)"
         for r in existing_relations[:10]
     ]) if existing_relations else "none yet"
-
-    # Build FULL context for semantic reasoning
-    probe_corpus = project.get("probe_corpus", [])
 
     # All actual Q&A pairs (the raw evidence)
     qa_pairs = []
@@ -301,31 +291,10 @@ Return JSON with ACTUAL entity names from the list above:
         # APPLY CURATIONS TO DATA
         changes = {"merged": 0, "banned": 0, "relations_added": 0}
 
-        # 1. Apply merges to probe_corpus
-        merges = result.get("merge", [])
-        for merge in merges:
-            canonical = merge.get("canonical", "")
-            aliases = merge.get("aliases", [])
-            if canonical and aliases:
-                for item in project.get("probe_corpus", []):
-                    new_entities = []
-                    for e in item.get("entities", []):
-                        if e in aliases:
-                            if canonical not in new_entities:
-                                new_entities.append(canonical)
-                            changes["merged"] += 1
-                        else:
-                            new_entities.append(e)
-                    item["entities"] = new_entities
+        # Note: We no longer modify probe_corpus in place since it's append-only JSONL
+        # Instead, we track banned entities in metadata and filter at query time
 
-        # 2. Remove banned entities from probe_corpus
-        ban_set = set(result.get("ban", []))
-        for item in project.get("probe_corpus", []):
-            original_len = len(item.get("entities", []))
-            item["entities"] = [e for e in item.get("entities", []) if e not in ban_set]
-            changes["banned"] += original_len - len(item["entities"])
-
-        # 3. Store/update/sever relations based on confidence
+        # 1. Update relations
         new_relations = result.get("relations", [])
         for rel in new_relations:
             subj, pred, obj = rel.get("subject"), rel.get("predicate"), rel.get("object")
@@ -356,20 +325,33 @@ Return JSON with ACTUAL entity names from the list above:
 
         project["relations"] = existing_relations
 
-        # 4. Update working theory
+        # 2. Update working theory
         new_theory = result.get("working_theory", "")
         if new_theory:
             project["working_theory"] = new_theory
+            project["narrative"] = new_theory
 
-        # 5. Update promoted entities
+        # 3. Update hidden entities (bans)
+        hidden = set(project.get("hidden_entities", []))
+        ban_list = result.get("ban", [])
+        hidden.update(ban_list)
+        project["hidden_entities"] = list(hidden)
+        changes["banned"] = len(ban_list)
+
+        # 4. Update promoted entities
         promoted = set(project.get("promoted_entities", []))
         promoted.update(result.get("promote", []))
         project["promoted_entities"] = list(promoted)
 
+        # 5. Store merges for reference (applied at query time)
+        merges = result.get("merge", [])
+        existing_merges = project.get("entity_merges", [])
+        existing_merges.extend(merges)
+        project["entity_merges"] = existing_merges
+        changes["merged"] = len(merges)
+
         # Save changes
-        project["updated"] = datetime.now().isoformat()
-        with open(project_file, 'w') as f:
-            json.dump(project, f, indent=2)
+        storage.save_project_meta(project_name, project)
 
         return jsonify({
             "merge": merges,
