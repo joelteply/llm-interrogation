@@ -141,7 +141,6 @@ def get_findings(name):
 
     # Import filter to stay in sync with findings.add_response
     from interrogator.extract import is_entity_refusal
-    from interrogator import extract_facts_fast
 
     for item in probe_corpus:
         # Filter entities the same way findings does
@@ -149,9 +148,9 @@ def get_findings(name):
         model = item.get("model", "unknown")
         is_refusal = item.get("is_refusal", False)
 
-        # Extract entities from question to detect echoes
+        # Simple word extraction from question for echo detection (no LLM call!)
         question = item.get("question", "")
-        question_ents = set(e.lower() for e in extract_facts_fast(question))
+        question_words = set(w.lower() for w in question.split() if len(w) > 3)
 
         findings.add_response(entities, model, is_refusal)
 
@@ -168,7 +167,8 @@ def get_findings(name):
             # Check if this is a FIRST mention (not in model's context or question)
             e_lower = entity.lower()
             in_context = e_lower in model_context[model]
-            in_question = e_lower in question_ents
+            # Check if any word of the entity appears in the question
+            in_question = any(w in question_words for w in e_lower.split())
             is_first_mention = not in_context and not in_question
 
             # Extract context: find sentence containing entity
