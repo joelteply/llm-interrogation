@@ -15,6 +15,19 @@ try:
 except ImportError:
     PLAYWRIGHT_OK = False
 
+try:
+    import requests
+    REQUESTS_OK = True
+except ImportError:
+    REQUESTS_OK = False
+
+try:
+    from PyPDF2 import PdfReader
+    from io import BytesIO
+    PDF_OK = True
+except ImportError:
+    PDF_OK = False
+
 
 @dataclass
 class FetchResult:
@@ -62,6 +75,55 @@ def make_doc_id(source: str, url: str) -> str:
     return f"{source}_{hashlib.md5(url.encode()).hexdigest()[:12]}"
 
 
+def fetch_pdf(url: str, timeout: int = 30) -> FetchResult:
+    """Fetch PDF and extract text."""
+    if not REQUESTS_OK:
+        return FetchResult(url, "", "", False, "requests not installed")
+    if not PDF_OK:
+        return FetchResult(url, "", "", False, "PyPDF2 not installed")
+
+    real_url = normalize_url(url)
+
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'application/pdf,*/*',
+        }
+        r = requests.get(real_url, headers=headers, timeout=timeout)
+        r.raise_for_status()
+
+        # Check if it's actually a PDF
+        content_type = r.headers.get('Content-Type', '')
+        if 'pdf' not in content_type.lower() and not real_url.endswith('.pdf'):
+            return FetchResult(real_url, "", "", False, f"Not a PDF: {content_type}")
+
+        # Extract text from PDF
+        pdf_reader = PdfReader(BytesIO(r.content))
+        text_parts = []
+        for page in pdf_reader.pages:
+            text = page.extract_text()
+            if text:
+                text_parts.append(text)
+
+        content = '\n\n'.join(text_parts)
+
+        if len(content) < 100:
+            return FetchResult(real_url, "", "", False, "PDF has no extractable text")
+
+        # Get title from metadata or URL
+        title = ""
+        if pdf_reader.metadata and pdf_reader.metadata.title:
+            title = pdf_reader.metadata.title
+        else:
+            title = real_url.split('/')[-1].replace('.pdf', '').replace('-', ' ')
+
+        print(f"[pdf] Extracted {len(content)} chars from {len(pdf_reader.pages)} pages")
+        return FetchResult(real_url, title, content, True)
+
+    except Exception as e:
+        return FetchResult(real_url, "", "", False, str(e))
+
+
 class BrowserFetcher:
     """
     Fetches web content using a real browser.
@@ -90,6 +152,10 @@ class BrowserFetcher:
     def fetch(self, url: str) -> FetchResult:
         """Fetch URL and extract content."""
         real_url = normalize_url(url)
+
+        # Handle PDFs directly (don't use browser)
+        if real_url.endswith('.pdf') or '/pdf/' in real_url:
+            return fetch_pdf(real_url)
 
         try:
             page = self._browser.new_page()
