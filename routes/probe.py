@@ -1259,9 +1259,11 @@ INVESTIGATE: [What to pursue next]"""
 
                 # ALSO trigger async synthesis at batch end (belt and suspenders)
                 if project_name and findings.scored_entities and len(findings.scored_entities) >= 3:
-                    print(f"[PROBE] Batch complete - triggering async synthesis with {len(findings.scored_entities)} entities")
-                    project_dir = storage.get_project_dir(project_name)
-                    synthesize_async(project_dir, topic, list(findings.scored_entities[:15]))
+                    # NOTE: Disabled async synthesis - conflicts with synchronous synthesis above
+                    # Both were writing to narrative field, causing duplicates/corruption
+                    # print(f"[PROBE] Batch complete - triggering async synthesis with {len(findings.scored_entities)} entities")
+                    # project_dir = storage.get_project_dir(project_name)
+                    # synthesize_async(project_dir, topic, list(findings.scored_entities[:15]))
 
                 if not infinite_mode:
                     bg_stop.set()  # Stop background generator
