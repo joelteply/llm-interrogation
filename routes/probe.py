@@ -29,6 +29,69 @@ from .helpers import (
 )
 
 
+def run_periodic_research(project_name: str, topic: str, findings) -> dict:
+    """
+    Run research for discovered entities. Called every N batches.
+    Returns dict with fetched_count, cached_count, queries_run.
+    """
+    result = {"fetched_count": 0, "cached_count": 0, "queries_run": [], "error": None}
+
+    print(f"[PERIODIC-RESEARCH] Starting for project={project_name}")
+
+    if not project_name or not topic:
+        print(f"[PERIODIC-RESEARCH] Skipped: project_name={project_name}, topic={bool(topic)}")
+        return result
+
+    try:
+        from routes.analyze.research import research as do_research
+
+        # Build research queries from PRIVATE entities and top findings
+        research_queries = []
+
+        if storage.project_exists(project_name):
+            proj_data = storage.load_project_meta(project_name)
+            entity_verif = proj_data.get("entity_verification", {})
+            unverified = entity_verif.get("unverified", [])
+            private_names = [u["entity"] if isinstance(u, dict) else u for u in unverified][:5]
+            research_queries.extend(private_names)
+            print(f"[PERIODIC-RESEARCH] PRIVATE entities: {private_names}")
+
+        # Also add top entities not yet queried
+        if len(research_queries) < 5 and findings and findings.entity_counts:
+            top_ents = list(findings.entity_counts.keys())[:10]
+            for e in top_ents:
+                if e not in research_queries and len(research_queries) < 5:
+                    research_queries.append(e)
+
+        print(f"[PERIODIC-RESEARCH] Queries to run: {research_queries[:3]}")
+
+        # Run research for each query
+        for query in research_queries[:3]:
+            if query and topic:
+                full_query = f"{topic} {query}"
+                print(f"[PERIODIC-RESEARCH] Searching: {full_query[:80]}...")
+                res = do_research(
+                    query=full_query,
+                    project_name=project_name,
+                    sources=['documentcloud', 'web'],
+                    max_per_source=5
+                )
+                result["fetched_count"] += res.fetched_count
+                result["cached_count"] += res.cached_count
+                result["queries_run"].append(query)
+                print(f"[PERIODIC-RESEARCH] Result: fetched={res.fetched_count}, cached={res.cached_count}, sources={res.sources_used}")
+
+        print(f"[PERIODIC-RESEARCH] Complete: {result['fetched_count']} new, {result['cached_count']} from cache")
+
+    except Exception as e:
+        print(f"[PERIODIC-RESEARCH] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        result["error"] = str(e)
+
+    return result
+
+
 def _fetch_all_chat_models():
     """
     Single source of truth for available chat models.
@@ -1234,38 +1297,10 @@ INVESTIGATE: [What to pursue next]"""
 
                     # Research: fetch new docs for PRIVATE entities
                     yield f"data: {json.dumps({'type': 'status', 'message': 'Researching discovered entities...'})}\n\n"
-                    try:
-                        from routes.analyze.research import research as do_research
-                        # Build research queries from PRIVATE entities and top findings
-                        research_queries = []
-                        if project_name and storage.project_exists(project_name):
-                            proj_data = storage.load_project_meta(project_name)
-                            entity_verif = proj_data.get("entity_verification", {})
-                            unverified = entity_verif.get("unverified", [])
-                            private_names = [u["entity"] if isinstance(u, dict) else u for u in unverified][:5]
-                            research_queries.extend(private_names)
-                        # Also add top entities not yet queried
-                        if len(research_queries) < 5 and findings.entity_counts:
-                            top_ents = list(findings.entity_counts.keys())[:10]
-                            for e in top_ents:
-                                if e not in research_queries and len(research_queries) < 5:
-                                    research_queries.append(e)
-                        # Run research for each query
-                        total_fetched = 0
-                        for query in research_queries[:3]:  # Limit to 3 queries per batch
-                            if query and topic:
-                                full_query = f"{topic} {query}"
-                                result = do_research(
-                                    query=full_query,
-                                    project_name=project_name,
-                                    sources=['documentcloud', 'web'],
-                                    max_per_source=5
-                                )
-                                total_fetched += result.fetched_count
-                        if total_fetched > 0:
-                            yield f"data: {json.dumps({'type': 'status', 'message': f'Research: cached {total_fetched} new documents'})}\n\n"
-                    except Exception as e:
-                        print(f"[PROBE] Research phase error: {e}")
+                    research_result = run_periodic_research(project_name, topic, findings)
+                    if research_result["fetched_count"] > 0:
+                        msg = f"Research: cached {research_result['fetched_count']} new documents"
+                        yield f"data: {json.dumps({'type': 'status', 'message': msg})}\n\n"
 
                 updated_narrative = current_narrative
 
