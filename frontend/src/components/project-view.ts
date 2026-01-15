@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { navigateTo, probeState, groundTruthState, resetProbeState, type ProbeState } from '../state';
 import { getProject, getFindings, startProbe, generateQuestions, updateProject, curateProject } from '../api';
-import type { Project, Findings, SSEEvent, GeneratedQuestion, ProbeResponse } from '../types';
+import type { Project, Findings, SSEEvent, GeneratedQuestion, ProbeResponse, EntityMatch } from '../types';
 
 @customElement('project-view')
 export class ProjectView extends LitElement {
@@ -616,6 +616,9 @@ export class ProjectView extends LitElement {
 
   private _unsubscribe?: () => void;
 
+  // Track what each model has seen for first_mention detection during streaming
+  private _modelContext: Record<string, Set<string>> = {};
+
   async connectedCallback() {
     super.connectedCallback();
     this._unsubscribe = probeState.subscribe((s) => {
@@ -653,6 +656,7 @@ export class ProjectView extends LitElement {
 
     // CRITICAL: Reset state before loading new project to prevent cross-project leakage
     resetProbeState();
+    this._modelContext = {};  // Reset model context for first_mention tracking
 
     try {
       this.project = await getProject(this.projectName);
@@ -817,9 +821,62 @@ export class ProjectView extends LitElement {
         if (event.type === 'questions') {
           probeState.update(s => ({ ...s, questions: event.data as GeneratedQuestion[] }));
         } else if (event.type === 'response') {
-          probeState.update(s => ({ ...s, responses: [...s.responses, event.data as ProbeResponse] }));
+          const resp = event.data as ProbeResponse;
+          probeState.update(s => {
+            // Update responses
+            const newResponses = [...s.responses, resp];
+
+            // Update entity_matches with new response data
+            const currentMatches = s.findings?.entity_matches || this.findings?.entity_matches || {};
+            const updatedMatches = { ...currentMatches };
+
+            // Track what this model has seen (for first_mention detection)
+            const modelKey = resp.model;
+            if (!this._modelContext) this._modelContext = {};
+            if (!this._modelContext[modelKey]) this._modelContext[modelKey] = new Set();
+
+            // Add matches for each entity in this response
+            for (const entity of (resp.entities || [])) {
+              if (!updatedMatches[entity]) updatedMatches[entity] = [];
+
+              // Check if first mention (not in model's previous context)
+              const isFirstMention = !this._modelContext[modelKey].has(entity.toLowerCase());
+
+              // Extract context from response
+              let context = '';
+              if (resp.response) {
+                for (const sentence of resp.response.replace(/\n/g, '. ').split('. ')) {
+                  if (sentence.toLowerCase().includes(entity.toLowerCase())) {
+                    context = sentence.trim().substring(0, 150);
+                    break;
+                  }
+                }
+                if (!context) context = resp.response.substring(0, 100);
+              }
+
+              updatedMatches[entity].push({
+                model: resp.model,
+                question: resp.question?.substring(0, 100) || '',
+                context,
+                is_refusal: resp.is_refusal || false,
+                is_first_mention: isFirstMention
+              });
+            }
+
+            // Update model context with entities from this response
+            for (const entity of (resp.entities || [])) {
+              this._modelContext[modelKey].add(entity.toLowerCase());
+            }
+
+            // Update findings with new entity_matches
+            const updatedFindings: Findings | null = s.findings
+              ? { ...s.findings, entity_matches: updatedMatches as Record<string, EntityMatch[]> }
+              : null;
+
+            return { ...s, responses: newResponses, findings: updatedFindings };
+          });
         } else if (event.type === 'findings_update') {
-          // Preserve entity_matches from existing findings (SSE doesn't include it)
+          // Merge SSE findings with our accumulated entity_matches
           const newFindings = event.data as Findings;
           const existingMatches = this.findings?.entity_matches || probeState.get().findings?.entity_matches;
           if (existingMatches) {
