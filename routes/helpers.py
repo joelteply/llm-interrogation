@@ -987,21 +987,27 @@ def rephrase_for_indirect(question: str, topic: str) -> str:
 
 def filter_question_echoes(response_entities: list, question: str) -> list:
     """
-    Filter out entities that appeared in the question.
+    Filter out entities that are likely echoes from the question.
 
-    If we ask "What did Target Subject work on?" and get back
-    "I don't know about Target Subject", we should NOT count
-    "Target Subject" as a yield - that's just echo, not signal.
+    Aggressive filtering: if ANY significant word from the question
+    appears in the entity, it's probably an echo not new info.
     """
     from interrogator import extract_entities
 
     # Extract entities from the question
     question_entities = set(e.lower() for e in extract_entities(question))
 
-    # Also add individual words from question entities (for partial matches)
+    # Get significant words from question (skip common words)
+    stop_words = {'the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'is', 'are', 'was', 'were', 'about', 'from'}
     question_words = set()
     for qe in question_entities:
-        question_words.update(qe.lower().split())
+        for w in qe.lower().split():
+            if w not in stop_words and len(w) > 2:
+                question_words.update([w])
+    # Also add words from the raw question text
+    for w in question.lower().split():
+        if w not in stop_words and len(w) > 3:
+            question_words.add(w)
 
     # Filter response entities
     filtered = []
@@ -1009,13 +1015,13 @@ def filter_question_echoes(response_entities: list, question: str) -> list:
         entity_lower = entity.lower()
         entity_words = set(entity_lower.split())
 
-        # Skip if exact match to question entity
+        # Skip exact match
         if entity_lower in question_entities:
             continue
 
-        # Skip if all words in this entity appeared in question
-        # (catches "Target Subject" when question had "Subject" and "Target")
-        if entity_words and entity_words.issubset(question_words):
+        # Skip if ANY significant overlap (aggressive echo detection)
+        overlap = entity_words & question_words
+        if overlap:
             continue
 
         filtered.append(entity)
