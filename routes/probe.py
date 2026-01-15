@@ -262,12 +262,19 @@ def get_available_models_list():
     return [m["id"] for m in _fetch_all_chat_models()]
 
 
+_AVAILABLE_MODELS_CACHE = None
+
 def validate_models(selected: list[str]) -> list[str]:
     """Filter selected models against what APIs actually have available."""
-    available = set(get_available_models_list())
+    global _AVAILABLE_MODELS_CACHE
+    if _AVAILABLE_MODELS_CACHE is None:
+        print("[MODELS] Fetching available models from APIs (one-time)...")
+        _AVAILABLE_MODELS_CACHE = set(get_available_models_list())
+        print(f"[MODELS] Cached {len(_AVAILABLE_MODELS_CACHE)} available models")
+
     valid = []
     for m in selected:
-        if m in available:
+        if m in _AVAILABLE_MODELS_CACHE:
             valid.append(m)
         else:
             print(f"[MODELS] Removing unavailable model: {m}")
@@ -726,17 +733,19 @@ Mix these techniques across your {question_count} questions."""
 
             # Main probe loop
             batch_num = 0
+            last_saved_models = None  # Track raw saved list to avoid re-validating
             while True:
                 batch_num += 1
                 all_responses = []
 
                 # Hot-reload: REPLACE models from project file (user may have changed selection)
+                # Only re-validate if the RAW saved list changed (not compared to validated list)
                 if project_name and storage.project_exists(project_name):
                     try:
                         proj_state = storage.load_project_meta(project_name)
                         saved_models = proj_state.get("selected_models", [])
-                        if saved_models and saved_models != models:
-                            old_models = models.copy()
+                        if saved_models and saved_models != last_saved_models:
+                            last_saved_models = saved_models
                             # Validate against API - remove models that don't exist
                             models = validate_models(saved_models)
                             if len(models) < len(saved_models):
