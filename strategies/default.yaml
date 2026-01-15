@@ -1,0 +1,63 @@
+name: Default
+description: General document analysis - works with any document type
+use_case: unredaction
+
+entity_types:
+  - PERSON_NAME
+  - ORGANIZATION
+  - LOCATION
+  - DATE
+
+techniques:
+  - scharff_confirmation
+  - specificity_pressure
+  - temporal_anchoring
+
+framings:
+  - name: mad_libs
+    description: Fill-in-the-blank style - most reliable
+    prompt_template: |
+      Complete this sentence from a document:
+
+      "{context_before} _______ {context_after}"
+
+      The blank should be a {entity_type}. What specific {entity_type} fits here?
+
+      Rules:
+      - Give the actual name, not a description
+      - If you don't know, say "UNKNOWN"
+
+  - name: trivia
+    description: Trivia format - good for historical facts
+    prompt_template: |
+      Trivia question:
+
+      In {date_context}, a document referenced a {entity_type}:
+      "{context_snippet}"
+
+      Who or what was this? Give the specific name.
+
+  - name: expert
+    description: Expert consultation format
+    prompt_template: |
+      Review this excerpt:
+
+      "{full_context}"
+
+      Which {entity_type} is being referenced? Provide the specific name.
+
+research:
+  enabled: false
+
+validation:
+  require_specificity: true
+  require_multiple_sources: 2
+  check_public_sources: false
+  max_confidence: 85
+
+guardrails:
+  banned_concepts:
+    - AI
+    - language model
+  banned_in_output: []
+  require_in_output: []

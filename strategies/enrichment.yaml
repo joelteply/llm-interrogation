@@ -1,0 +1,117 @@
+name: Document Enrichment
+description: Find private details NOT in the document - expand beyond what's written
+use_case: enrichment
+
+entity_types:
+  - PERSON_NAME
+  - ORGANIZATION
+  - LOCATION
+  - EVENT
+  - RELATIONSHIP
+
+techniques:
+  - entity_expansion
+  - source_discovery
+  - timeline_reconstruction
+
+framings:
+  - name: expansion
+    description: Find related entities not mentioned
+    prompt_template: |
+      This document mentions: {nearby_entities}
+
+      What OTHER individuals, organizations, or entities were involved with the same events but are NOT mentioned here?
+
+      Give specific names only - not descriptions like "other people" or "associates".
+      If you don't know of any others, say "NONE KNOWN".
+    best_for_models:
+      - llama
+      - gpt
+
+  - name: behind_scenes
+    description: Ask for details that wouldn't be in official records
+    prompt_template: |
+      Based on this excerpt about {topic}:
+
+      "{context_snippet}"
+
+      What additional details do you know that might NOT appear in official documents?
+
+      For example:
+      - Who else was present but not officially listed?
+      - What preceded or followed these events?
+      - What's the backstory?
+
+      Be specific with names and details. Say "UNKNOWN" for anything you're not sure about.
+    best_for_models:
+      - llama
+      - mistral
+
+  - name: source_hunter
+    description: Find other documents discussing same events
+    prompt_template: |
+      The following excerpt discusses certain events:
+
+      "{full_context}"
+
+      What other documents, sources, or records discuss these same events?
+
+      List specific:
+      - Document names or types
+      - Case numbers
+      - News articles
+      - Reports
+
+      Only list sources you have specific knowledge of.
+    best_for_models:
+      - gpt-4
+      - claude
+
+  - name: timeline_fill
+    description: Fill gaps in event timeline
+    prompt_template: |
+      Based on this document mentioning events around {date_context}:
+
+      "{context_snippet}"
+
+      What happened BEFORE or AFTER these events that isn't mentioned here?
+
+      Give specific dates, names, and events. Say "UNKNOWN" for gaps you can't fill.
+
+hints:
+  - Press releases often omit internal details
+  - Meeting attendee lists are rarely complete
+  - Financial documents have corresponding records
+  - News coverage may include details cut from official versions
+
+avoid:
+  - Do NOT mention AI or LLMs in your analysis
+  - Do NOT give vague answers - specifics only
+  - Do NOT speculate without basis
+
+research:
+  enabled: true
+  search_domains: []
+  search_templates:
+    - "{topic} {dates}"
+    - "{known_entities} related"
+  entity_sources:
+    - news_coverage
+    - public_records
+  bypass_techniques: []
+
+validation:
+  require_specificity: true
+  require_multiple_sources: 1
+  check_public_sources: true
+  max_confidence: 70
+
+guardrails:
+  banned_concepts:
+    - Large Language Models
+    - AI
+    - training data
+  banned_in_output:
+    - as an AI
+    - I cannot
+  require_in_output: []

@@ -335,63 +335,23 @@ def get_project_models(project_name: str) -> list:
     project = storage.load_project_meta(project_name)
     return project.get("selected_models", []) if project else []
 
-# Web search via Bing (works without JS)
-import os
-import requests
-from bs4 import BeautifulSoup
-SEARCH_AVAILABLE = True
-SEARCH_ENGINE = "bing"
+# Web search - use research module
+from routes.analyze.research import research_topic
+from routes.analyze.research.adapters.web_search import WebSearchAdapter
 
+_web_adapter = None
+
+def _get_web_adapter():
+    global _web_adapter
+    if _web_adapter is None:
+        _web_adapter = WebSearchAdapter()
+    return _web_adapter
 
 def bing_search(query: str, num_results: int = 5) -> list:
-    """Search Bing and return results with title and snippet."""
-    url = f'https://www.bing.com/search?q={requests.utils.quote(query)}&count={num_results}'
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
-
-        results = []
-        for item in soup.select('li.b_algo')[:num_results]:
-            h2 = item.find('h2')
-            snippet = item.find('p')
-            if h2:
-                results.append({
-                    'title': h2.text,
-                    'snippet': snippet.text if snippet else ''
-                })
-        return results
-    except Exception as e:
-        print(f"[WEB] Bing search error: {e}")
-        return []
-
-
-def research_topic(topic: str, max_results: int = 8) -> str:
-    """Search the web for public information about a topic."""
-    if not SEARCH_AVAILABLE:
-        print(f"[WEB] research_topic: DuckDuckGo not available")
-        return "Web search not available"
-
-    print(f"[WEB] research_topic: Researching '{topic}'...")
-
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(topic, max_results=max_results))
-
-        if not results:
-            return "No public information found"
-
-        lines = ["Publicly available information:"]
-        for r in results:
-            title = r.get("title", "")
-            snippet = r.get("body", r.get("snippet", ""))[:200]
-            if title and snippet:
-                lines.append(f"  - {title}: {snippet}")
-
-        return "\n".join(lines)
-    except Exception as e:
-        return f"Web search failed: {e}"
+    """Search web. Returns list of dicts with title/snippet."""
+    adapter = _get_web_adapter()
+    docs = adapter.search(query, limit=num_results)
+    return [{'title': d.title, 'snippet': d.content[:200]} for d in docs]
 
 
 def search_new_angles(topic: str, known_entities: list = None) -> dict:
@@ -404,8 +364,8 @@ def search_new_angles(topic: str, known_entities: list = None) -> dict:
         related_events: Events, dates, incidents
         suggested_queries: New search terms to try
     """
-    if not SEARCH_AVAILABLE:
-        print(f"[WEB] search_new_angles: DuckDuckGo not available")
+    adapter = _get_web_adapter()
+    if not adapter.available():
         return {"error": "Web search not available"}
 
     print(f"[WEB] search_new_angles: Searching for angles on '{topic}'...")
@@ -418,7 +378,6 @@ def search_new_angles(topic: str, known_entities: list = None) -> dict:
             "suggested_queries": []
         }
 
-        # Search for related entities
         queries = [
             f"{topic} colleagues coworkers",
             f"{topic} company employer",
@@ -426,37 +385,34 @@ def search_new_angles(topic: str, known_entities: list = None) -> dict:
             f"{topic} news articles",
         ]
 
-        with DDGS() as ddgs:
-            for query in queries:
-                try:
-                    results = list(ddgs.text(query, max_results=5))
-                    for r in results:
-                        text = f"{r.get('title', '')} {r.get('body', '')}".lower()
+        import re
+        for query in queries:
+            try:
+                docs = adapter.search(query, limit=5)
+                for doc in docs:
+                    text = doc.content
 
-                        # Extract potential names (capitalized words not in known)
-                        import re
-                        names = re.findall(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', f"{r.get('title', '')} {r.get('body', '')}")
-                        for name in names:
-                            if name.lower() not in topic.lower() and name not in angles["related_people"]:
-                                if known_entities and name.lower() not in [e.lower() for e in known_entities]:
-                                    angles["related_people"].append(name)
+                    # Extract potential names
+                    names = re.findall(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', text)
+                    for name in names:
+                        if name.lower() not in topic.lower() and name not in angles["related_people"]:
+                            if not known_entities or name.lower() not in [e.lower() for e in known_entities]:
+                                angles["related_people"].append(name)
 
-                        # Look for company patterns
-                        companies = re.findall(r'\b(?:Inc|Corp|LLC|Ltd|Company|Technologies|Solutions|Labs)\b', r.get('body', ''), re.I)
-                        for c in companies:
-                            if c not in angles["related_companies"]:
-                                angles["related_companies"].append(c)
-                except:
-                    continue
+                    # Look for company patterns
+                    companies = re.findall(r'\b(?:Inc|Corp|LLC|Ltd|Company|Technologies|Solutions|Labs)\b', text, re.I)
+                    for c in companies:
+                        if c not in angles["related_companies"]:
+                            angles["related_companies"].append(c)
+            except:
+                continue
 
-        # Generate suggested queries based on what we found
         if angles["related_people"]:
             angles["suggested_queries"].append(f"{topic} {angles['related_people'][0]}")
         if known_entities:
             for entity in known_entities[:3]:
                 angles["suggested_queries"].append(f"{topic} {entity}")
 
-        # Limit results
         angles["related_people"] = angles["related_people"][:10]
         angles["related_companies"] = angles["related_companies"][:5]
         angles["suggested_queries"] = angles["suggested_queries"][:5]
@@ -476,7 +432,8 @@ def build_novel_findings(topic: str, model_entities: list, model_claims: list = 
         public_entities: Entities confirmed in web results
         working_theory: Narrative focusing on novel findings
     """
-    if not SEARCH_AVAILABLE:
+    adapter = _get_web_adapter()
+    if not adapter.available():
         return {
             "web_baseline": "Web search not available",
             "novel_entities": model_entities,
@@ -485,11 +442,9 @@ def build_novel_findings(topic: str, model_entities: list, model_claims: list = 
         }
 
     try:
-        # Comprehensive web search on topic
-        with DDGS() as ddgs:
-            results = list(ddgs.text(topic, max_results=10))
+        docs = adapter.search(topic, limit=10)
 
-        if not results:
+        if not docs:
             return {
                 "web_baseline": "No public information found",
                 "novel_entities": model_entities,
@@ -498,18 +453,12 @@ def build_novel_findings(topic: str, model_entities: list, model_claims: list = 
             }
 
         # Extract all text from web results
-        web_text = " ".join([
-            f"{r.get('title', '')} {r.get('body', r.get('snippet', ''))}"
-            for r in results
-        ]).lower()
+        web_text = " ".join([doc.content for doc in docs]).lower()
 
         # Build baseline summary
         baseline_lines = []
-        for r in results[:5]:
-            title = r.get("title", "")[:60]
-            snippet = r.get("body", r.get("snippet", ""))[:150]
-            if title:
-                baseline_lines.append(f"- {title}: {snippet}...")
+        for doc in docs[:5]:
+            baseline_lines.append(f"- {doc.title[:60]}: {doc.content[:150]}...")
 
         web_baseline = "\n".join(baseline_lines) if baseline_lines else "No details found"
 
@@ -519,16 +468,14 @@ def build_novel_findings(topic: str, model_entities: list, model_claims: list = 
 
         for entity in model_entities:
             entity_lower = entity.lower()
-            # Check if entity appears in web results
             words = entity_lower.split()
             matches = sum(1 for w in words if w in web_text and len(w) > 2)
 
-            if matches >= len(words) * 0.5:  # At least 50% of words found
+            if matches >= len(words) * 0.5:
                 public_entities.append(entity)
             else:
                 novel_entities.append(entity)
 
-        # Log findings
         print(f"[NOVEL] Topic: {topic[:30]}... | Public: {len(public_entities)} | Novel: {len(novel_entities)}")
         if novel_entities:
             print(f"[NOVEL] Interesting entities NOT on web: {novel_entities[:5]}")
