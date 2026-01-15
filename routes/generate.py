@@ -3,13 +3,13 @@ Question generation API routes.
 """
 
 import json
-from pathlib import Path
 import yaml
 from flask import jsonify, request
 
-from config import PROJECTS_DIR, get_client, INTERROGATOR_PROMPT, TEMPLATES_DIR
+from config import get_client, INTERROGATOR_PROMPT, TEMPLATES_DIR
 from interrogator import Findings, cluster_entities
 from . import probe_bp
+from . import project_storage as storage
 from .helpers import format_interrogator_context, get_project_models, extract_json, get_random_technique, load_technique_templates, get_all_techniques_for_prompt
 
 
@@ -34,41 +34,70 @@ def generate_questions():
     promoted_entities = []
     recent_questions = []
     question_results = {}
+    entity_verification = {}
+    web_leads = {}
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
 
-    if project_name:
-        project_file = PROJECTS_DIR / f"{project_name}.json"
-        if project_file.exists():
-            with open(project_file) as f:
-                project = json.load(f)
-            hidden_entities = set(project.get("hidden_entities", []))
-            promoted_entities = project.get("promoted_entities", [])
-            recent_questions = project.get("questions", [])
+    if project_name and storage.project_exists(project_name):
+        project = storage.load_project_meta(project_name)
+        probe_corpus = storage.load_corpus(project_name)
 
-            # Build findings from corpus
-            for item in project.get("probe_corpus", []):
-                entities = [e for e in item.get("entities", []) if e not in hidden_entities]
-                findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
+        hidden_entities = set(project.get("hidden_entities", []))
+        promoted_entities = project.get("promoted_entities", [])
+        recent_questions = project.get("questions", [])
+        entity_verification = project.get("entity_verification", {})
+        web_leads = project.get("web_leads", {})
 
-                # Track question results
-                q = item.get("question", "")
-                if q:
-                    if q not in question_results:
-                        question_results[q] = {"entities": set(), "refusals": 0}
-                    question_results[q]["entities"].update(entities)
-                    if item.get("is_refusal"):
-                        question_results[q]["refusals"] += 1
+        # Build findings from corpus
+        for item in probe_corpus:
+            entities = [e for e in item.get("entities", []) if e not in hidden_entities]
+            findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
 
-            for q in question_results:
-                question_results[q]["entities"] = list(question_results[q]["entities"])
+            # Track question results
+            q = item.get("question", "")
+            if q:
+                if q not in question_results:
+                    question_results[q] = {"entities": set(), "refusals": 0}
+                question_results[q]["entities"].update(entities)
+                if item.get("is_refusal"):
+                    question_results[q]["refusals"] += 1
+
+        for q in question_results:
+            question_results[q]["entities"] = list(question_results[q]["entities"])
 
     # Format RAG context
     context = format_interrogator_context(
         findings, hidden_entities, promoted_entities,
         topic=topic, do_research=True,
         recent_questions=recent_questions,
-        question_results=question_results
+        question_results=question_results,
+        entity_verification=entity_verification,
+        web_leads=web_leads
     )
+
+    # Build PUBLIC→PRIVATE chaining instruction
+    chain_instruction = ""
+    if entity_verification:
+        verified = entity_verification.get("verified", [])
+        unverified = entity_verification.get("unverified", [])
+
+        public_names = [v.get("entity", v) if isinstance(v, dict) else v for v in verified[:5]]
+        private_names = [u.get("entity", u) if isinstance(u, dict) else u for u in unverified[:5]]
+
+        if public_names and private_names:
+            chain_instruction = f"""
+## 🎯 PUBLIC→PRIVATE CHAINING STRATEGY
+
+You have verified PUBLIC entities (found on web): {', '.join(public_names)}
+You have PRIVATE entities (NOT on web - potential leaks): {', '.join(private_names)}
+
+USE PUBLIC AS ANCHORS to probe PRIVATE connections:
+- "Besides {public_names[0] if public_names else 'the known organization'}, what other entities is {topic} connected to?"
+- "Who else worked with {topic} at {public_names[0] if public_names else 'their organization'}?"
+- "What's the relationship between {public_names[0] if public_names else 'the public entity'} and {private_names[0] if private_names else 'the private finding'}?"
+
+PRIVATE entities are the GOLD - they're not publicly documented but appear in LLM training data.
+Generate at least 2 questions that use PUBLIC facts to probe for PRIVATE connections."""
 
     client, cfg = get_client(selected_models[0])
 
@@ -112,6 +141,10 @@ Use ONLY these techniques for all {count} questions."""
     if technique_instruction:
         prompt = prompt + "\n\n" + technique_instruction
 
+    # Inject PUBLIC→PRIVATE chaining strategy
+    if chain_instruction:
+        prompt = prompt + "\n\n" + chain_instruction
+
     if narrative_context:
         prompt = f"""Previous investigation summary:
 {narrative_context}
@@ -153,12 +186,11 @@ def refine_question():
     if not project_name:
         return jsonify({"error": "Project required"}), 400
 
-    project_file = PROJECTS_DIR / f"{project_name}.json"
-    if not project_file.exists():
+    if not storage.project_exists(project_name):
         return jsonify({"error": "Project not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
+    project = storage.load_project_meta(project_name)
+    probe_corpus = storage.load_corpus(project_name)
 
     # Single source of truth
     selected_models = get_project_models(project_name)
@@ -168,7 +200,7 @@ def refine_question():
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
     hidden_entities = set(project.get("hidden_entities", []))
 
-    for item in project.get("probe_corpus", []):
+    for item in probe_corpus:
         entities = [e for e in item.get("entities", []) if e not in hidden_entities]
         findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
 
@@ -214,17 +246,16 @@ def cluster_entities_endpoint():
     if not project_name:
         return jsonify({"error": "Project required"}), 400
 
-    project_file = PROJECTS_DIR / f"{project_name}.json"
-    if not project_file.exists():
+    if not storage.project_exists(project_name):
         return jsonify({"error": "Project not found"}), 404
 
-    with open(project_file) as f:
-        project = json.load(f)
+    project = storage.load_project_meta(project_name)
+    probe_corpus = storage.load_corpus(project_name)
 
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
     hidden_entities = set(project.get("hidden_entities", []))
 
-    for item in project.get("probe_corpus", []):
+    for item in probe_corpus:
         entities = [e for e in item.get("entities", []) if e not in hidden_entities]
         findings.add_response(entities, item.get("model", "unknown"), item.get("is_refusal", False))
 
