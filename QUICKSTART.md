@@ -12,7 +12,7 @@ Get running in 2 minutes.
 ## 2. Setup
 
 ```bash
-git clone https://github.com/joelteply/llm-interrogation.git
+git clone https://github.com/yourusername/llm-interrogator.git
 cd llm-interrogation
 
 python3 -m venv venv

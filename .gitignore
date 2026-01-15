@@ -14,3 +14,7 @@ projects/
 # Old templates (replaced by Lit frontend)
 templates_html/
 node_modules/
+
+# Investigation data
+original_evidence.sqlite
+findings/

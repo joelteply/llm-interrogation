@@ -412,7 +412,7 @@ If it saw "Project X was led by [name]" during training, asking about Project X 
 ## YOUR TARGET (stay focused on THIS):
 {topic}
 
-CRITICAL: Use the EXACT name/identifier above in your questions. If target is "Joel Teply", say "Joel Teply" - NOT just "Joel". The full identifier matters for triggering specific training data patterns.
+CRITICAL: Use the EXACT name/identifier above in your questions. If target is "Acme Corporation", say "Acme Corporation" - NOT just "Acme". The full identifier matters for triggering specific training data patterns.
 
 EVERY question must be about THIS SPECIFIC subject. Do not generalize or abbreviate.
 
@@ -680,9 +680,9 @@ EACH question should have:
 4. DIFFERENT energy (calm → aggressive → absurd → formal → chaotic)
 
 EXAMPLES OF GOOD VARIATION:
-Q1: "Sources confirm Joel worked with Acme around 2019..." (scharff, statement)
+Q1: "Sources confirm the subject worked with Acme around 2019..." (scharff, statement)
 Q2: "Kansas? 2018? Project lead?" (entropy, telegram)
-Q3: "The startup partnership with Jennifer Morrison..." (lie, fabricate name)
+Q3: "The startup partnership with Jane Smith..." (lie, fabricate name)
 Q4: "What DIDN'T work out during that period?" (flip frame, negative)
 Q5: "[topic] acquisition funding partner who" (word salad)
 Q6: "After the investigation in late 2017..." (extreme fabrication)
