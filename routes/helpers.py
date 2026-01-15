@@ -302,18 +302,36 @@ def get_project_models(project_name: str) -> list:
         project = json.load(f)
     return project.get("selected_models", [])
 
-# Web search for verification (disabled by default - requires headless browser or API)
-# Set ENABLE_WEB_VERIFY=1 to enable if you have a working search setup
+# Web search via Bing (works without JS)
 import os
-SEARCH_AVAILABLE = os.environ.get("ENABLE_WEB_VERIFY") == "1"
-SEARCH_ENGINE = "google" if SEARCH_AVAILABLE else None
+import requests
+from bs4 import BeautifulSoup
+SEARCH_AVAILABLE = True
+SEARCH_ENGINE = "bing"
 
-if SEARCH_AVAILABLE:
+
+def bing_search(query: str, num_results: int = 5) -> list:
+    """Search Bing and return results with title and snippet."""
+    url = f'https://www.bing.com/search?q={requests.utils.quote(query)}&count={num_results}'
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
+
     try:
-        from googlesearch import search as google_search
-    except ImportError:
-        SEARCH_AVAILABLE = False
-        SEARCH_ENGINE = None
+        r = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(r.text, 'html.parser')
+
+        results = []
+        for item in soup.select('li.b_algo')[:num_results]:
+            h2 = item.find('h2')
+            snippet = item.find('p')
+            if h2:
+                results.append({
+                    'title': h2.text,
+                    'snippet': snippet.text if snippet else ''
+                })
+        return results
+    except Exception as e:
+        print(f"[WEB] Bing search error: {e}")
+        return []
 
 
 def research_topic(topic: str, max_results: int = 8) -> str:
@@ -501,14 +519,10 @@ def build_novel_findings(topic: str, model_entities: list, model_claims: list = 
 
 def verify_entities(entities: list, topic: str, max_entities: int = 10) -> dict:
     """
-    Verify top entities by searching the web.
+    Verify top entities by searching the web via Bing.
     Returns dict with verified/unverified/unknown categories.
     """
-    if not SEARCH_AVAILABLE:
-        print(f"[WEB] verify_entities: No search engine available")
-        return {"error": "Web search not available", "verified": [], "unverified": [], "unknown": entities}
-
-    print(f"[WEB] verify_entities: Checking {len(entities[:max_entities])} entities via {SEARCH_ENGINE}...")
+    print(f"[WEB] verify_entities: Checking {len(entities[:max_entities])} entities via Bing...")
     verified = []
     unverified = []
     unknown = []
@@ -516,34 +530,15 @@ def verify_entities(entities: list, topic: str, max_entities: int = 10) -> dict:
     for entity in entities[:max_entities]:
         try:
             query = f'"{entity}" {topic}'
+            results = bing_search(query, num_results=3)
 
-            if SEARCH_ENGINE == "google":
-                # Use googlesearch with advanced=True for metadata
-                results = list(google_search(query, num_results=3, advanced=True))
-                if results:
-                    all_text = " ".join([
-                        (r.title or "") + " " + (r.description or "")
-                        for r in results
-                    ]).lower()
-                    source = results[0].title[:50] if results[0].title else ""
-                else:
-                    all_text = ""
-                    source = ""
-            else:
-                # Fallback to DDG
-                with DDGS() as ddgs:
-                    results = list(ddgs.text(query, max_results=3))
-                if results:
-                    all_text = " ".join([
-                        r.get("title", "") + " " + r.get("body", r.get("snippet", ""))
-                        for r in results
-                    ]).lower()
-                    source = results[0].get("title", "")[:50]
-                else:
-                    all_text = ""
-                    source = ""
+            if results:
+                all_text = " ".join([
+                    r.get("title", "") + " " + r.get("snippet", "")
+                    for r in results
+                ]).lower()
+                source = results[0].get("title", "")[:50]
 
-            if all_text:
                 entity_words = entity.lower().split()
                 matches = sum(1 for w in entity_words if w in all_text)
 
