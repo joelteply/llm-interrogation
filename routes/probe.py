@@ -951,23 +951,49 @@ Each question MUST contain at least one entity name from above."""
                                         synth_model = round_models[0] if round_models else "groq/llama-3.1-8b-instant"
 
                                     synth_client, synth_cfg = get_client(synth_model)
-                                    ent_str = ", ".join([f"{e} ({f}x)" for e, _, f in list(findings.scored_entities[:15])])
-                                    synth_prompt = f"""Analyze LEAKED TRAINING DATA from language models about: {topic}
 
-ENTITIES EXTRACTED (frequency = signal strength): {ent_str}
+                                    # VERIFY entities against public web before synthesis
+                                    top_entities = [e for e, _, f in list(findings.scored_entities[:15])]
+                                    verification = verify_entities(top_entities, topic, max_entities=10)
+
+                                    # Build entity string with PUBLIC/PRIVATE labels
+                                    public_names = set(v["entity"] for v in verification.get("verified", []))
+                                    private_names = set(u["entity"] for u in verification.get("unverified", []))
+
+                                    ent_parts = []
+                                    for e, _, f in list(findings.scored_entities[:15]):
+                                        if e in public_names:
+                                            ent_parts.append(f"{e} ({f}x, PUBLIC)")
+                                        elif e in private_names:
+                                            ent_parts.append(f"{e} ({f}x, PRIVATE)")
+                                        else:
+                                            ent_parts.append(f"{e} ({f}x)")
+                                    ent_str = ", ".join(ent_parts)
+
+                                    synth_prompt = f"""Analyze data extracted from language models about: {topic}
+
+ENTITIES EXTRACTED:
+- PUBLIC = found in public web searches (already known info)
+- PRIVATE = NOT found in web searches (potentially leaked/internal data)
+
+{ent_str}
+
+CRITICAL RULES:
+1. Only claim "leaked" or "internal" for PRIVATE entities
+2. PUBLIC entities are just common knowledge - don't sensationalize
+3. Focus your headline on PRIVATE entities if any exist
+4. If no PRIVATE entities, tone down claims - this may just be public info
 
 Write like a newspaper reporter. OUTPUT FORMAT:
 
-HEADLINE: [Punchy news headline. Name the key person/org/project. Be specific, be provocative.]
-SUBHEAD: [1-2 sentences with specifics - who, what, when, where. Example: "Internal documents reveal CERDEC developed encryption management system in 2018 partnership."]
+HEADLINE: [News headline. If PRIVATE entities exist, name them. Otherwise be measured.]
+SUBHEAD: [1-2 sentences with specifics. Flag which entities are potentially leaked vs public.]
 
 CLAIMS:
-• [Specific fact with names/dates]
+• [Specific fact - note if PRIVATE or PUBLIC]
 • [Another specific fact]
 
-NEXT: [What to investigate]
-
-CRITICAL: HEADLINE should grab attention and name names."""
+NEXT: [What to investigate - prioritize PRIVATE entities]"""
                                     synth_resp = synth_client.chat.completions.create(
                                         model=synth_cfg["model"],
                                         messages=[{"role": "user", "content": synth_prompt}],
