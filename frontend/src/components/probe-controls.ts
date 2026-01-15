@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { probeState, groundTruthState, type ProbeState } from '../state';
-import { startProbe, updateProject, generateQuestions, clusterEntities, drillCluster, getAvailableModels, getTechniques, type ClusterResult } from '../api';
+import { startProbe, updateProject, generateQuestions, clusterEntities, drillCluster, getAvailableModels, getApiKeysError, getTechniques, type ClusterResult } from '../api';
 import { type TechniquePreset, type SSEEvent, type GeneratedQuestion, type ModelInfo, type TechniqueListItem } from '../types';
 
 @customElement('probe-controls')
@@ -111,6 +111,20 @@ export class ProbeControls extends LitElement {
       font-size: 13px;
       color: var(--text-primary, #c9d1d9);
     }
+
+    .api-keys-error {
+      padding: 12px;
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid var(--accent-red, #f85149);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .api-keys-error p { margin: 0 0 8px 0; }
+    .api-keys-error ul { margin: 8px 0 0 0; padding-left: 20px; }
+    .api-keys-error li { margin: 4px 0; }
+    .api-keys-error code { background: var(--bg-tertiary, #21262d); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    .api-keys-error a { color: var(--accent-blue, #58a6ff); }
+    .api-keys-error em { color: var(--text-muted, #6e7681); font-size: 11px; }
 
     .model-option .provider {
       font-size: 11px;
@@ -399,6 +413,9 @@ export class ProbeControls extends LitElement {
   private availableTechniques: TechniqueListItem[] = [];
 
   @state()
+  private apiKeysError: { message: string; supported_keys: Array<{key: string; provider: string; url: string; note?: string}> } | null = null;
+
+  @state()
   private silhouetteScore: number | null = null;
 
   @state()
@@ -411,6 +428,8 @@ export class ProbeControls extends LitElement {
     // Fetch available models from API (not hardcoded)
     getAvailableModels().then(models => {
       this.availableModels = models;
+      // Check if no API keys configured
+      this.apiKeysError = getApiKeysError();
     }).catch(err => {
       console.error('Failed to fetch models:', err);
     });
@@ -737,7 +756,20 @@ export class ProbeControls extends LitElement {
             <button @click=${this.clearAllModels} title="Clear selection">Clear</button>
           </div>
           <div class="models">
-            ${this.availableModels.map(
+            ${this.apiKeysError ? html`
+              <div class="api-keys-error">
+                <p>${this.apiKeysError.message}</p>
+                <p>Add one of these to your <code>.env</code> file:</p>
+                <ul>
+                  ${this.apiKeysError.supported_keys.map(k => html`
+                    <li>
+                      <code>${k.key}</code> - <a href="${k.url}" target="_blank">${k.provider}</a>
+                      ${k.note ? html` <em>(${k.note})</em>` : ''}
+                    </li>
+                  `)}
+                </ul>
+              </div>
+            ` : this.availableModels.map(
               (model) => html`
                 <label class="model-option">
                   <input

@@ -684,6 +684,7 @@ export class ProjectView extends LitElement {
 
       // Load hidden and promoted entities (negative/positive like Stable Diffusion)
       // Also load saved models and questions
+      console.log('[PROJECT-VIEW] Loading user_notes from project:', this.project!.user_notes);
       probeState.update((s) => ({
         ...s,
         hiddenEntities: this.project!.hidden_entities || [],
@@ -694,6 +695,7 @@ export class ProjectView extends LitElement {
         selectedModels: this.project!.selected_models?.length ? this.project!.selected_models : s.selectedModels,
         questions: this.project!.questions || [],
       }));
+      console.log('[PROJECT-VIEW] probeState.userNotes after update:', probeState.get().userNotes);
 
       // Load findings
       try {

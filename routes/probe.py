@@ -29,34 +29,31 @@ from .helpers import (
 )
 
 
-@probe_bp.route("/api/models")
-def get_models():
-    """Get available models - fetches dynamically from APIs when possible."""
+def _fetch_all_chat_models():
+    """
+    Single source of truth for available chat models.
+    Returns list of dicts: {"id": "provider/model", "name": "...", "provider": "..."}
+    """
     import os
     models = []
 
-    # Groq - fetch from API, filter to chat models only
+    # Filtering rules - chat models only
+    GROQ_CHAT_KEYWORDS = ['llama', 'mixtral', 'gemma', 'qwen', 'deepseek']
+    GROQ_EXCLUDE = ['whisper', 'guard', 'embed', 'vision', 'tool', 'compound', 'safeguard', 'orpheus', 'allam']
+    OPENAI_EXCLUDE = ['audio', 'realtime', 'tts', 'transcribe', 'whisper', 'embed', 'ft:', 'search', 'diarize', 'instruct']
+    XAI_EXCLUDE = ['vision', 'image', 'embed', 'audio', 'base']
+
+    # Groq - fetch from API
     if os.environ.get("GROQ_API_KEY"):
         try:
-            # Groq already imported at top level
             client = Groq()
-            groq_models = client.models.list()
-            # Only include chat-capable models (exclude whisper, guard, embedding, etc)
-            chat_keywords = ['llama', 'mixtral', 'gemma', 'qwen', 'deepseek']
-            exclude_keywords = ['whisper', 'guard', 'embed', 'vision', 'tool', 'compound', 'safeguard', 'orpheus', 'allam']
-            for m in groq_models.data:
+            for m in client.models.list().data:
                 if getattr(m, 'active', True):
                     model_id = m.id.lower()
-                    is_chat = any(kw in model_id for kw in chat_keywords)
-                    is_excluded = any(kw in model_id for kw in exclude_keywords)
-                    if is_chat and not is_excluded:
-                        models.append({
-                            "id": f"groq/{m.id}",
-                            "name": m.id,
-                            "provider": "Groq"
-                        })
+                    if any(kw in model_id for kw in GROQ_CHAT_KEYWORDS) and not any(kw in model_id for kw in GROQ_EXCLUDE):
+                        models.append({"id": f"groq/{m.id}", "name": m.id, "provider": "Groq"})
         except Exception as e:
-            print(f"[ERROR] Groq API models.list() failed: {e} - no Groq models available")
+            print(f"[ERROR] Groq API: {e}")
 
     # DeepSeek
     if os.environ.get("DEEPSEEK_API_KEY"):
@@ -65,32 +62,28 @@ def get_models():
             {"id": "deepseek/deepseek-reasoner", "name": "DeepSeek R1", "provider": "DeepSeek"},
         ])
 
-    # OpenAI - only include main chat models (not audio, realtime, tts, fine-tuned)
+    # OpenAI - fetch from API
     if os.environ.get("OPENAI_API_KEY"):
         try:
             from openai import OpenAI
             client = OpenAI()
-            exclude_openai = ['audio', 'realtime', 'tts', 'transcribe', 'whisper', 'embed', 'ft:', 'search', 'diarize', 'instruct']
             for m in client.models.list().data:
-                if ("gpt-4" in m.id or "gpt-3.5" in m.id):
-                    if not any(ex in m.id for ex in exclude_openai):
-                        models.append({"id": f"openai/{m.id}", "name": m.id, "provider": "OpenAI"})
+                if ("gpt-4" in m.id or "gpt-3.5" in m.id) and not any(ex in m.id for ex in OPENAI_EXCLUDE):
+                    models.append({"id": f"openai/{m.id}", "name": m.id, "provider": "OpenAI"})
         except Exception as e:
-            print(f"[ERROR] OpenAI API models.list() failed: {e} - no OpenAI models available")
+            print(f"[ERROR] OpenAI API: {e}")
 
-    # xAI - only grok chat models (exclude image, vision, embedding, base models)
+    # xAI - fetch from API, only grok models
     if os.environ.get("XAI_API_KEY"):
         try:
             from openai import OpenAI
             client = OpenAI(base_url="https://api.x.ai/v1", api_key=os.environ.get("XAI_API_KEY"))
-            exclude_xai = ['vision', 'image', 'embed', 'audio', 'base']
             for m in client.models.list().data:
                 model_lower = m.id.lower()
-                # Must be a grok model AND not excluded
-                if 'grok' in model_lower and not any(ex in model_lower for ex in exclude_xai):
+                if 'grok' in model_lower and not any(ex in model_lower for ex in XAI_EXCLUDE):
                     models.append({"id": f"xai/{m.id}", "name": m.id, "provider": "xAI"})
         except Exception as e:
-            print(f"[ERROR] xAI API models.list() failed: {e} - no xAI models available")
+            print(f"[ERROR] xAI API: {e}")
 
     # Anthropic
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -148,7 +141,7 @@ def get_models():
             {"id": "cohere/command-r7b-12-2024", "name": "Command R7B", "provider": "Cohere"},
         ])
 
-    # OpenRouter (aggregator - access to 300+ models)
+    # OpenRouter
     if os.environ.get("OPENROUTER_API_KEY"):
         models.extend([
             {"id": "openrouter/anthropic/claude-sonnet-4", "name": "Claude Sonnet 4 (OR)", "provider": "OpenRouter"},
@@ -171,63 +164,39 @@ def get_models():
         except:
             pass
 
+    return models
+
+
+@probe_bp.route("/api/models")
+def get_models():
+    """API endpoint - returns full model objects for UI."""
+    models = _fetch_all_chat_models()
+
+    # If no models available, return helpful message about API keys
+    if not models:
+        return jsonify({
+            "error": "no_api_keys",
+            "message": "No API keys configured. Set at least one in your .env file.",
+            "supported_keys": [
+                {"key": "GROQ_API_KEY", "provider": "Groq", "url": "https://console.groq.com/keys", "note": "Free tier available"},
+                {"key": "OPENAI_API_KEY", "provider": "OpenAI", "url": "https://platform.openai.com/api-keys"},
+                {"key": "DEEPSEEK_API_KEY", "provider": "DeepSeek", "url": "https://platform.deepseek.com/api_keys", "note": "Very cheap"},
+                {"key": "XAI_API_KEY", "provider": "xAI (Grok)", "url": "https://console.x.ai/"},
+                {"key": "ANTHROPIC_API_KEY", "provider": "Anthropic", "url": "https://console.anthropic.com/"},
+                {"key": "MISTRAL_API_KEY", "provider": "Mistral", "url": "https://console.mistral.ai/api-keys/"},
+                {"key": "TOGETHER_API_KEY", "provider": "Together AI", "url": "https://api.together.ai/settings/api-keys"},
+                {"key": "GOOGLE_API_KEY", "provider": "Google Gemini", "url": "https://aistudio.google.com/apikey"},
+                {"key": "OPENROUTER_API_KEY", "provider": "OpenRouter", "url": "https://openrouter.ai/keys", "note": "Access to 300+ models"},
+            ],
+            "models": []
+        }), 200  # Return 200 so frontend can handle gracefully
+
     return jsonify(models)
 
 
 def get_available_models_list():
-    """Get list of available models dynamically (same as /api/models endpoint)."""
-    import os
-    models = []
-
-    # Groq
-    if os.environ.get("GROQ_API_KEY"):
-        try:
-            # Groq already imported at top level
-            client = Groq()
-            chat_keywords = ['llama', 'mixtral', 'gemma', 'qwen', 'deepseek']
-            exclude_keywords = ['whisper', 'guard', 'embed', 'vision', 'tool', 'compound', 'safeguard', 'orpheus', 'allam']
-            for m in client.models.list().data:
-                if getattr(m, 'active', True):
-                    model_id = m.id.lower()
-                    if any(kw in model_id for kw in chat_keywords) and not any(kw in model_id for kw in exclude_keywords):
-                        models.append(f"groq/{m.id}")
-        except:
-            pass
-
-    # DeepSeek
-    if os.environ.get("DEEPSEEK_API_KEY"):
-        models.extend(["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"])
-
-    # OpenAI
-    if os.environ.get("OPENAI_API_KEY"):
-        try:
-            from openai import OpenAI
-            client = OpenAI()
-            for m in client.models.list().data:
-                if ("gpt-4" in m.id or "gpt-3.5" in m.id) and not any(ex in m.id for ex in ['audio', 'realtime', 'tts', 'instruct']):
-                    models.append(f"openai/{m.id}")
-        except:
-            pass
-
-    # xAI
-    if os.environ.get("XAI_API_KEY"):
-        try:
-            from openai import OpenAI
-            client = OpenAI(base_url="https://api.x.ai/v1", api_key=os.environ.get("XAI_API_KEY"))
-            # Only include known chat models (grok), exclude vision/image/embedding
-            exclude_xai = ['vision', 'image', 'embed', 'audio', 'base']
-            for m in client.models.list().data:
-                model_lower = m.id.lower()
-                if 'grok' in model_lower and not any(ex in model_lower for ex in exclude_xai):
-                    models.append(f"xai/{m.id}")
-        except:
-            pass
-
-    # Anthropic
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        models.extend(["anthropic/claude-sonnet-4-20250514", "anthropic/claude-3-5-haiku-20241022"])
-
-    return models
+    """Internal use - returns just model IDs as strings."""
+    return [m["id"] for m in _fetch_all_chat_models()]
 
 
 def quick_survey_models(topic: str, models_list: list = None, runs: int = 2):

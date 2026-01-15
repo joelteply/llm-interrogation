@@ -4,13 +4,27 @@ const API_BASE = '/api';
 
 // Models - fetched dynamically from API
 let _modelsCache: ModelInfo[] | null = null;
+let _apiKeysError: { message: string; supported_keys: Array<{key: string; provider: string; url: string; note?: string}> } | null = null;
 
 export async function getAvailableModels(): Promise<ModelInfo[]> {
   if (_modelsCache) return _modelsCache;
   const res = await fetch(`${API_BASE}/models`);
   if (!res.ok) throw new Error('Failed to fetch models');
-  _modelsCache = await res.json();
+  const data = await res.json();
+
+  // Check if this is the "no API keys" response
+  if (data.error === 'no_api_keys') {
+    _apiKeysError = { message: data.message, supported_keys: data.supported_keys };
+    _modelsCache = [];
+    return [];
+  }
+
+  _modelsCache = data;
   return _modelsCache!;
+}
+
+export function getApiKeysError() {
+  return _apiKeysError;
 }
 
 // Clear cache to refetch
