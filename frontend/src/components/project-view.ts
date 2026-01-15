@@ -684,7 +684,6 @@ export class ProjectView extends LitElement {
 
       // Load hidden and promoted entities (negative/positive like Stable Diffusion)
       // Also load saved models and questions
-      console.log('[PROJECT-VIEW] Loading user_notes from project:', this.project!.user_notes);
       probeState.update((s) => ({
         ...s,
         hiddenEntities: this.project!.hidden_entities || [],
@@ -695,7 +694,6 @@ export class ProjectView extends LitElement {
         selectedModels: this.project!.selected_models?.length ? this.project!.selected_models : s.selectedModels,
         questions: this.project!.questions || [],
       }));
-      console.log('[PROJECT-VIEW] probeState.userNotes after update:', probeState.get().userNotes);
 
       // Load findings
       try {
@@ -705,7 +703,6 @@ export class ProjectView extends LitElement {
         // Auto-curate on load if enabled and has data
         const curState = probeState.get();
         if (curState.autoCurate && this.findings?.entities && Object.keys(this.findings.entities).length > 10) {
-          console.log('Auto-curating on load...');
           this.handleCurate();
         }
       } catch {
@@ -818,8 +815,6 @@ export class ProjectView extends LitElement {
         infinite_mode: state.infiniteMode,          // Keep running until stopped
       },
       (event: SSEEvent) => {
-        // Debug: trace ALL events
-        console.log('[SSE event]', event.type, event.type === 'response' ? '(response data)' : event);
         if (event.type === 'questions') {
           probeState.update(s => ({ ...s, questions: event.data as GeneratedQuestion[] }));
         } else if (event.type === 'response') {
@@ -924,9 +919,7 @@ export class ProjectView extends LitElement {
         } else if (event.type === 'narrative') {
           // Interrogator's updated working theory
           const text = (event.data as any)?.text || (event as any).text || (event.data as any)?.narrative || (event as any).narrative || '';
-          console.log('[SSE] narrative event received:', text.substring(0, 100) + '...');
           probeState.update(s => ({ ...s, narrative: text, narrativeUpdated: Date.now() }));
-          console.log('[SSE] probeState.narrative updated to:', probeState.get().narrative?.substring(0, 50));
         } else if (event.type === 'error') {
           // Model or API error - log but keep running
           const msg = (event as any).message || (event.data as any)?.message || 'Unknown error';
@@ -936,7 +929,6 @@ export class ProjectView extends LitElement {
         } else if (event.type === 'run_start') {
           // New question starting - update the current question index
           const qIdx = (event as any).question_index as number;
-          console.log('[SSE] run_start: updating currentQuestionIndex to', qIdx);
           probeState.update(s => ({ ...s, currentQuestionIndex: qIdx }));
         } else if (event.type === 'model_active') {
           // Highlight which model is currently being queried

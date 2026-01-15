@@ -336,7 +336,7 @@ def get_project_models(project_name: str) -> list:
     return project.get("selected_models", []) if project else []
 
 # Web search - use research module
-from routes.analyze.research import research_topic
+from routes.analyze.research import research_topic, query_research
 from routes.analyze.research.adapters.web_search import WebSearchAdapter
 
 _web_adapter = None
@@ -564,6 +564,8 @@ def format_interrogator_context(
     session = None,  # InterrogationSession with per-model threads
     entity_verification: dict = None,  # Web verification: verified/unverified/unknown
     web_leads: dict = None,  # Web search results for new angles to explore
+    research_context: str = "",  # Deprecated - use project_name for smart retrieval
+    project_name: str = "",  # Project name for querying cached research
 ) -> dict:
     """Format rich RAG context for the interrogator prompt."""
 
@@ -577,11 +579,42 @@ def format_interrogator_context(
                 return True
         return False
 
-    # Research public baseline
-    if do_research and topic:
+    # Smart research retrieval - query cached docs for relevant entities
+    public_baseline = ""
+    query_terms = []
+
+    if project_name:
+        # Priority 1: PRIVATE entities (not found on web) - most interesting
+        if entity_verification:
+            unverified = entity_verification.get("unverified", [])
+            private_names = [u["entity"] if isinstance(u, dict) else u for u in unverified][:5]
+            query_terms.extend(private_names)
+            print(f"[RESEARCH] PRIVATE entities: {private_names}")
+
+        # Priority 2: Top validated entities from findings
+        if findings and findings.validated_entities and len(query_terms) < 5:
+            # validated_entities is a dict, not a list
+            top_entities = [e for e in list(findings.validated_entities.keys())[:5] if e not in query_terms]
+            query_terms.extend(top_entities[:3])
+            print(f"[RESEARCH] Top entities: {top_entities[:3]}")
+
+        # Priority 3: Topic words as fallback
+        if not query_terms and topic:
+            topic_words = [w for w in topic.split() if len(w) > 4][:3]
+            query_terms.extend(topic_words)
+            print(f"[RESEARCH] Topic fallback: {topic_words}")
+
+        if query_terms:
+            public_baseline = query_research(query_terms, project_name, max_results=3)
+            print(f"[RESEARCH] query_research({query_terms}) returned: {len(public_baseline)} chars")
+        else:
+            print(f"[RESEARCH] No query terms available")
+
+    # Fallback to quick web search if no cached research
+    if not public_baseline and do_research and topic:
         public_baseline = research_topic(topic)
-    else:
-        public_baseline = "Skipped web research"
+    elif not public_baseline:
+        public_baseline = "No research context"
 
     # Stats with alerts
     refusal_pct = findings.refusal_rate * 100
@@ -891,7 +924,7 @@ Generate questions that CONTINUE the strategy based on the model's recent respon
                 # These are the interesting ones - not on web but models mention them!
                 unv_names = [u["entity"] if isinstance(u, dict) else u for u in unverified]
                 v_lines.append(f"  🎯 PRIVATE (NOT on web - DIG DEEPER): {', '.join(unv_names)}")
-                v_lines.append("     ^ These entities came from model training data, not public web. Focus here!")
+                v_lines.append("     ^ These entities are NOT documented in public sources. FOCUS HERE!")
             if verified:
                 ver_names = [v["entity"] if isinstance(v, dict) else v for v in verified]
                 v_lines.append(f"  ✓ PUBLIC (found on web - less interesting): {', '.join(ver_names)}")

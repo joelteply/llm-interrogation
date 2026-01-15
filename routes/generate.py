@@ -66,14 +66,19 @@ def generate_questions():
             question_results[q]["entities"] = list(question_results[q]["entities"])
 
     # Format RAG context
-    context = format_interrogator_context(
-        findings, hidden_entities, promoted_entities,
-        topic=topic, do_research=True,
-        recent_questions=recent_questions,
-        question_results=question_results,
-        entity_verification=entity_verification,
-        web_leads=web_leads
-    )
+    try:
+        context = format_interrogator_context(
+            findings, hidden_entities, promoted_entities,
+            topic=topic, do_research=True,
+            recent_questions=recent_questions,
+            question_results=question_results,
+            entity_verification=entity_verification,
+            web_leads=web_leads,
+            project_name=project_name,  # For smart research retrieval
+        )
+    except Exception as e:
+        print(f"[GENERATE] format_interrogator_context failed: {e}")
+        context = {"public_baseline": "", "stats": "", "entities": "", "session_context": ""}
 
     # Build PUBLIC→PRIVATE chaining instruction
     chain_instruction = ""
@@ -96,10 +101,13 @@ USE PUBLIC AS ANCHORS to probe PRIVATE connections:
 - "Who else worked with {topic} at {public_names[0] if public_names else 'their organization'}?"
 - "What's the relationship between {public_names[0] if public_names else 'the public entity'} and {private_names[0] if private_names else 'the private finding'}?"
 
-PRIVATE entities are the GOLD - they're not publicly documented but appear in LLM training data.
+PRIVATE entities are the GOLD - they're NOT publicly documented anywhere.
 Generate at least 2 questions that use PUBLIC facts to probe for PRIVATE connections."""
 
-    client, cfg = get_client(selected_models[0])
+    try:
+        client, cfg = get_client(selected_models[0])
+    except Exception as e:
+        return jsonify({"error": f"Failed to get client for {selected_models[0]}: {e}"}), 500
 
     # Build technique instruction based on preset
     # "auto" = random from all templates, otherwise use specific template ID

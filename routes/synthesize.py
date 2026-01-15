@@ -53,7 +53,7 @@ def synthesize():
             model=cfg["model"],
             messages=[{"role": "user", "content": synthesis_prompt}],
             temperature=0.7,
-            max_tokens=1500
+            max_tokens=2500
         )
         narrative = resp.choices[0].message.content
 
@@ -158,41 +158,44 @@ def generate_theory():
 
     print(f"[THEORY] Generating dossier for topic='{topic}' with {len(findings.scored_entities)} entities...")
 
-    prompt = f"""Build a DOSSIER from language model responses about: {topic}
+    prompt = f"""Write an intelligence dossier about: {topic}
 
-ENTITIES WITH CONTEXT (PRIVATE = not found on web, potential leak):
+ENTITIES WITH CONTEXT:
+- PRIVATE = NOT in public records (THE MEAT - undocumented connections)
+- PUBLIC = found in public searches (background/context only)
+
 {entities_with_context}
 
-Generate a structured dossier. OUTPUT FORMAT:
+OUTPUT FORMAT:
 
-## CONFIRMED ASSOCIATIONS
-[List specific people, companies, places with what relationship was claimed]
+## HEADLINE
+[Lead with the most significant PRIVATE finding - this is the story]
 
-## POTENTIAL PRIVATE INFO (not publicly available)
-[PRIVATE entities with specific claims - these are potential memorized data]
+## PRIVATE FINDINGS (THE MEAT)
+[PRIVATE entities are the key findings - explain each one in detail]
+• [Name]: [What was found, why it matters, connections to other entities]
 
-## PUBLIC PROFILE
-[For each PUBLIC entity, list the SPECIFIC claim from the context. NOT just "LinkedIn presence" - say "LinkedIn: Software Engineer at Acme Corp". Include the actual info extracted.]
+## CONTEXT (public background)
+[PUBLIC entities provide context - brief mentions only]
 
-## KEY CLAIMS
-• [Specific claim with entity names and details]
-• [Another specific claim]
+## CONNECTIONS
+[How PRIVATE and PUBLIC entities relate to each other]
 
 ## INVESTIGATE NEXT
-[What gaps remain, what to probe deeper]
+[Based on PRIVATE leads, what to pursue next]
 
-CRITICAL RULES:
-1. Include SPECIFIC claims from the context quotes, not generic summaries
-2. If "Katie" is mentioned as "wife" or "ops lead", say that explicitly
-3. For PUBLIC entities, list WHAT was found (job title, company, dates) not just that they exist
-4. NEVER say "well-documented" - instead list the actual documented facts"""
+RULES:
+1. PRIVATE entities are THE FINDINGS - spend most of the report on these
+2. PUBLIC entities are just background - mention briefly for context
+3. Be SPECIFIC - names, dates, titles, relationships
+4. NEVER mention AI, language models, or analysis methodology"""
 
     try:
         resp = client.chat.completions.create(
             model=cfg["model"],
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
-            max_tokens=1500
+            max_tokens=2500
         )
         narrative = resp.choices[0].message.content.strip()
         print(f"[THEORY] Generated ({len(narrative)} chars): {narrative[:200]}...")

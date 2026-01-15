@@ -28,12 +28,12 @@ class WebSearchAdapter(ResearchAdapter):
         return DDG_AVAILABLE or BING_AVAILABLE
 
     def search(self, query: str, limit: int = 10) -> list[ResearchDoc]:
-        # Try DuckDuckGo first
-        results = self._search_ddg(query, limit) if DDG_AVAILABLE else []
+        # Bing first - DDG is broken (returns 0 results)
+        results = self._search_bing(query, limit) if BING_AVAILABLE else []
 
-        # Fallback to Bing
-        if not results and BING_AVAILABLE:
-            results = self._search_bing(query, limit)
+        # Fallback to DDG if Bing fails
+        if not results and DDG_AVAILABLE:
+            results = self._search_ddg(query, limit)
 
         return results
 

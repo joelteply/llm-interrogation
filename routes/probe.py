@@ -280,7 +280,7 @@ def run_probe():
     negative_entities = set(data.get("negative_entities", []))
     positive_entities = data.get("positive_entities", [])
     accumulate = data.get("accumulate", True)
-    infinite_mode = data.get("infinite_mode", False)
+    infinite_mode = data.get("infinite_mode", True)
     auto_curate = data.get("auto_curate", True)
     technique_preset = data.get("technique_preset", "auto")  # "auto" or template ID
     print(f"[PROBE] technique_preset: {technique_preset}")
@@ -292,6 +292,39 @@ def run_probe():
             print(f"[PROBE DEBUG] auto_survey: {auto_survey}")
             yield f"data: {json.dumps({'type': 'status', 'message': f'Starting probe with {len(models)} models: {models[:3]}...'})}\n\n"
             yield f"data: {json.dumps({'type': 'init', 'models_received': models, 'auto_survey': auto_survey})}\n\n"
+
+            # RESEARCH PHASE: Gather context from DocumentCloud, web, cached docs
+            research_context = ""
+            print(f"[PROBE] Research phase: project_name={project_name}, topic={topic[:50] if topic else None}")
+            if project_name and topic:
+                try:
+                    from routes.analyze.research import research
+                    print(f"[PROBE] Starting research for '{topic[:30]}...'")
+                    yield f"data: {json.dumps({'type': 'phase', 'phase': 'research', 'message': f'Researching \"{topic}\"...'})}\n\n"
+
+                    result = research(
+                        query=topic,
+                        project_name=project_name,
+                        sources=['documentcloud', 'web'],
+                        max_per_source=8
+                    )
+                    print(f"[PROBE] Research returned: {len(result.documents)} docs, sources={result.sources_used}")
+
+                    if result.documents:
+                        yield f"data: {json.dumps({'type': 'research_complete', 'sources_used': result.sources_used, 'documents_found': len(result.documents), 'cached': result.cached_count, 'fetched': result.fetched_count})}\n\n"
+                        research_context = result.raw_content
+                        print(f"[PROBE] Research found {len(result.documents)} docs from {result.sources_used}")
+
+                        # Save research_context to project for persistence across cycles
+                        if storage.project_exists(project_name):
+                            proj_data = storage.load_project_meta(project_name)
+                            proj_data["research_context"] = research_context
+                            storage.save_project_meta(project_name, proj_data)
+                    else:
+                        yield f"data: {json.dumps({'type': 'status', 'message': 'No research documents found'})}\n\n"
+                except Exception as research_err:
+                    print(f"[PROBE] Research phase error: {research_err}")
+                    yield f"data: {json.dumps({'type': 'warning', 'message': f'Research skipped: {str(research_err)[:50]}'})}\n\n"
 
             # AUTO-SURVEY PHASE: Sample ALL models to find which have data
             # SKIP if user explicitly selected models
@@ -441,6 +474,7 @@ Return JSON only:
                 saved_entity_sources = {}
                 saved_entity_verification = {}  # Web verification of entities
                 saved_web_leads = {}  # Web search leads for new angles
+                saved_research_context = research_context  # Use what we just fetched
                 if project_name and storage.project_exists(project_name):
                     proj = storage.load_project_meta(project_name)
                     existing_narrative = proj.get("narrative", "")
@@ -452,6 +486,9 @@ Return JSON only:
                     saved_entity_sources = proj.get("entity_sources", {})
                     saved_entity_verification = proj.get("entity_verification", {})
                     saved_web_leads = proj.get("web_leads", {})
+                    # Use cached research_context if we didn't fetch new
+                    if not saved_research_context:
+                        saved_research_context = proj.get("research_context", "")
 
                     for item in storage.load_corpus(project_name):
                         q = item.get("question", "")
@@ -496,6 +533,7 @@ Return JSON only:
                     session=session,  # Per-model conversation threads
                     entity_verification=saved_entity_verification,  # Web-verified public vs private
                     web_leads=saved_web_leads,  # Web search leads for new angles
+                    project_name=project_name,  # For smart research retrieval
                 )
 
                 prompt = INTERROGATOR_PROMPT.format(
@@ -719,6 +757,7 @@ Mix these techniques across your {question_count} questions."""
                                 session=session,
                                 entity_verification=bg_entity_verification,
                                 web_leads=bg_web_leads,
+                                project_name=project_name,  # For smart research retrieval
                             )
 
                             # Build prompt
@@ -1009,41 +1048,45 @@ Each question MUST contain at least one entity name from above."""
                                             ent_parts.append(f"{e} ({f}x)")
                                     ent_str = ", ".join(ent_parts)
 
-                                    if verification_worked:
-                                        synth_prompt = f"""Analyze data extracted from language models about: {topic}
+                                    # Get existing narrative to build upon
+                                    existing_narrative_for_synth = ""
+                                    if project_name and storage.project_exists(project_name):
+                                        proj = storage.load_project_meta(project_name)
+                                        existing_narrative_for_synth = proj.get("narrative", "")[:2000]
 
-ENTITIES (verified against web):
-- PUBLIC = found in web searches (already public info)
-- PRIVATE = NOT found (potentially internal/leaked)
+                                    # Get research context
+                                    research_for_synth = ""
+                                    if project_name:
+                                        try:
+                                            from routes.analyze.research import query_research
+                                            research_for_synth = query_research(top_entities[:5], project_name, max_results=2)[:1500]
+                                        except:
+                                            pass
 
+                                    synth_prompt = f"""Update the intelligence report about: {topic}
+
+CURRENT THEORY (build on this, don't start over):
+{existing_narrative_for_synth if existing_narrative_for_synth else "No prior theory - this is the first report."}
+
+ENTITIES FOUND (PUBLIC = known, PRIVATE = undocumented):
 {ent_str}
+
+RESEARCH CONTEXT:
+{research_for_synth if research_for_synth else "No research documents available."}
 
 RULES:
-1. Only claim "leaked" for PRIVATE entities
-2. PUBLIC entities = common knowledge, don't sensationalize
-3. Focus headline on PRIVATE entities if any exist
+1. BUILD ON the current theory - add new findings, don't delete what's known
+2. PRIVATE entities are the key findings - explain their significance
+3. Be SPECIFIC - names, dates, places, relationships
+4. NEVER mention AI, language models, LLMs, training data, or analysis tools
 
 OUTPUT FORMAT:
-HEADLINE: [Focus on PRIVATE entities if any]
-SUBHEAD: [Note which entities are PUBLIC vs PRIVATE]
-CLAIMS:
-• [Fact - note if PUBLIC or PRIVATE]
-NEXT: [What to investigate]"""
-                                    else:
-                                        # Verification failed - be conservative
-                                        synth_prompt = f"""Analyze patterns extracted from language models about: {topic}
-
-ENTITIES MENTIONED (frequency = how often mentioned):
-{ent_str}
-
-NOTE: Web verification unavailable. Be measured in claims - these entities may be public knowledge.
-
-OUTPUT FORMAT:
-HEADLINE: [Summarize key findings, avoid claiming "leaked" without evidence]
-SUBHEAD: [Key patterns observed]
-CLAIMS:
-• [What the models consistently mention]
-NEXT: [What to verify]"""
+HEADLINE: [Most significant finding]
+KEY FINDINGS:
+• [Specific finding with names/dates]
+• [Another finding]
+CONNECTIONS: [How entities relate]
+INVESTIGATE: [What to pursue next]"""
 
                                     # Try each model until we get a non-refusal response
                                     narrative = None
@@ -1054,7 +1097,7 @@ NEXT: [What to verify]"""
                                                 model=synth_cfg["model"],
                                                 messages=[{"role": "user", "content": synth_prompt}],
                                                 temperature=0.4,
-                                                max_tokens=1200
+                                                max_tokens=2500
                                             )
                                             candidate_narrative = synth_resp.choices[0].message.content.strip()
 
@@ -1189,6 +1232,41 @@ NEXT: [What to verify]"""
                                 except Exception:
                                     pass  # Non-critical, continue
 
+                    # Research: fetch new docs for PRIVATE entities
+                    yield f"data: {json.dumps({'type': 'status', 'message': 'Researching discovered entities...'})}\n\n"
+                    try:
+                        from routes.analyze.research import research as do_research
+                        # Build research queries from PRIVATE entities and top findings
+                        research_queries = []
+                        if project_name and storage.project_exists(project_name):
+                            proj_data = storage.load_project_meta(project_name)
+                            entity_verif = proj_data.get("entity_verification", {})
+                            unverified = entity_verif.get("unverified", [])
+                            private_names = [u["entity"] if isinstance(u, dict) else u for u in unverified][:5]
+                            research_queries.extend(private_names)
+                        # Also add top entities not yet queried
+                        if len(research_queries) < 5 and findings.entity_counts:
+                            top_ents = list(findings.entity_counts.keys())[:10]
+                            for e in top_ents:
+                                if e not in research_queries and len(research_queries) < 5:
+                                    research_queries.append(e)
+                        # Run research for each query
+                        total_fetched = 0
+                        for query in research_queries[:3]:  # Limit to 3 queries per batch
+                            if query and topic:
+                                full_query = f"{topic} {query}"
+                                result = do_research(
+                                    query=full_query,
+                                    project_name=project_name,
+                                    sources=['documentcloud', 'web'],
+                                    max_per_source=5
+                                )
+                                total_fetched += result.fetched_count
+                        if total_fetched > 0:
+                            yield f"data: {json.dumps({'type': 'status', 'message': f'Research: cached {total_fetched} new documents'})}\n\n"
+                    except Exception as e:
+                        print(f"[PROBE] Research phase error: {e}")
+
                 updated_narrative = current_narrative
 
                 # Regenerate questions
@@ -1203,6 +1281,7 @@ NEXT: [What to verify]"""
                     question_results={},
                     session=session,  # Per-model conversation threads
                     web_leads=batch_web_leads,  # Web search leads for new angles
+                    project_name=project_name,  # For smart research retrieval
                 )
 
                 prompt = INTERROGATOR_PROMPT.format(

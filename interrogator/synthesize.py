@@ -58,7 +58,7 @@ def build_synthesis_prompt(
         if samples:
             samples_str = "\n\n## Sample Responses (raw model output)\n" + "\n---\n".join(samples)
 
-    prompt = f"""You are analyzing findings from probing language models about "{topic}".
+    prompt = f"""You are analyzing intelligence findings about "{topic}".
 
 {findings.corpus_size} responses were collected. Extract and organize ALL specific information found.
 
@@ -106,7 +106,11 @@ What patterns emerged from probing:
 Based on findings, what should be investigated next:
 1. [Question]
 
-Be SPECIFIC. Include actual names, dates, places from the data. Do NOT generalize."""
+RULES:
+- Be SPECIFIC - include actual names, dates, places from the data
+- Do NOT generalize or use vague descriptions
+- NEVER mention AI, language models, training data, or how this was gathered
+- Focus on the SUBJECT MATTER, not the analysis methodology"""
 
     return prompt
 
@@ -230,14 +234,17 @@ def synthesize_async(project_dir, topic: str, scored_entities: List[Tuple[str, f
             prompt = f"""Intelligence report on {topic} based on: {ent_str}{web_info}
 
 FORMAT:
-PRIVATE CLAIMS FOUND:
-• [Entity]: "[What models said about it]"
+PRIVATE FINDINGS (THE MEAT - not in public records):
+• [Entity]: [What was found, why it matters]
 
-THEORY: [What the pattern suggests - 2-3 sentences]
+PUBLIC CONTEXT (background only):
+• [Known entities for context]
 
-NEXT: [What to pursue]
+THEORY: [What the PRIVATE findings suggest - 2-3 sentences]
 
-Be specific. Quote what models actually said."""
+NEXT: [What to pursue based on PRIVATE leads]
+
+Focus on PRIVATE - that's the story. PUBLIC is just context."""
 
             print(f"[SYNTH] Calling Groq API with model llama-3.1-8b-instant...")
             resp = client.chat.completions.create(
@@ -313,7 +320,7 @@ def synthesize_full_report(project_dir, topic: str, findings: Findings, raw_resp
 
 Cross-reference findings with web results above. Categorize claims:
 - **PUBLIC**: Entity AND its connection to the topic confirmed in web results
-- **PRIVATE**: NOT in web results but consistent across LLM responses (MOST INTERESTING - potential training data leak)
+- **PRIVATE**: NOT in web results but consistent across responses (MOST INTERESTING - undocumented connection)
 - **SUSPECT**: Single source, no web match, OR web shows entity exists but NOT connected to this topic (hallucinated connection)
 
 IMPORTANT: An entity existing on the web doesn't mean it's connected to the topic. "Acme Corp" might exist but have nothing to do with this specific subject. Check if web results actually CONNECT the entities to the topic.

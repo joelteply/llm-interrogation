@@ -148,10 +148,13 @@ def _update_index(cache_dir: Path, doc: ResearchDoc):
 def get_adapters(sources: list[str] = None) -> list[ResearchAdapter]:
     """Get available adapters, optionally filtered by source names."""
     adapters = [cls() for cls in ALL_ADAPTERS]
+    for a in adapters:
+        print(f"[ADAPTERS] {a.name}: available={a.available()}")
     available = [a for a in adapters if a.available()]
 
     if sources:
         available = [a for a in available if a.name in sources]
+        print(f"[ADAPTERS] Filtered to sources={sources}: {[a.name for a in available]}")
 
     return available
 
@@ -250,6 +253,90 @@ def research(
         cached_count=cached_count,
         fetched_count=fetched_count
     )
+
+
+# =============================================================================
+# Smart Retrieval - Query cached research by relevance
+# =============================================================================
+
+def query_research(
+    query_terms: list[str],
+    project_name: str,
+    max_results: int = 5
+) -> str:
+    """
+    Query cached research documents for relevant snippets.
+    Returns formatted text with matching content.
+    """
+    try:
+        if not query_terms or not project_name:
+            return ""
+
+        # Filter out None/empty terms
+        query_terms = [t for t in query_terms if t and isinstance(t, str)]
+        if not query_terms:
+            return ""
+
+        cache_dir = get_cache_dir(project_name)
+        print(f"[QUERY_RESEARCH] cache_dir={cache_dir}, exists={cache_dir.exists()}")
+        if not cache_dir.exists():
+            return ""
+
+        # Load all cached documents
+        index = _load_index(cache_dir)
+        doc_count = len(index.get('documents', {}))
+        print(f"[QUERY_RESEARCH] Found {doc_count} docs in index, searching for: {query_terms}")
+        if not index.get('documents'):
+            return ""
+
+        # Simple keyword matching - find docs containing query terms
+        matches = []
+        query_lower = [t.lower() for t in query_terms if len(t) > 3]
+
+        for doc_id, info in index['documents'].items():
+            md_path = cache_dir / f"{doc_id}.md"
+            if not md_path.exists():
+                continue
+
+            with open(md_path) as f:
+                content = f.read()
+
+            # Score by keyword matches
+            content_lower = content.lower()
+            score = sum(1 for term in query_lower if term in content_lower)
+
+            if score > 0:
+                # Extract relevant snippet (first 500 chars around first match)
+                for term in query_lower:
+                    pos = content_lower.find(term)
+                    if pos >= 0:
+                        start = max(0, pos - 200)
+                        snippet = content[start:start + 500]
+                        matches.append({
+                            'title': info.get('title', doc_id),
+                            'source': info.get('source', 'cache'),
+                            'snippet': snippet,
+                            'score': score
+                        })
+                        break
+
+        # Sort by relevance and return top matches
+        matches.sort(key=lambda x: -x['score'])
+        matches = matches[:max_results]
+
+        if not matches:
+            return ""
+
+        lines = ["Relevant research:"]
+        for m in matches:
+            lines.append(f"\n[{m['source']}: {m['title']}]")
+            lines.append(m['snippet'].strip())
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        print(f"[QUERY_RESEARCH] Error: {e}")
+        return ""
 
 
 # =============================================================================
