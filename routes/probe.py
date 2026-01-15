@@ -1260,7 +1260,7 @@ INVESTIGATE: [What to pursue next]"""
                         yield f"data: {json.dumps({'type': 'warning', 'message': f'Failed to load project state: {e}'})}\n\n"
 
                 # Refresh web leads and verify entities periodically (every 5 batches)
-                if batch_num % 5 == 0:
+                if batch_num % 3 == 0:
                     # Web search for new angles
                     yield f"data: {json.dumps({'type': 'status', 'message': 'Refreshing web search for new angles...'})}\n\n"
                     known_entities = list(findings.entity_counts.keys())[:20] if findings.entity_counts else []
@@ -1309,7 +1309,7 @@ INVESTIGATE: [What to pursue next]"""
 
                 context = format_interrogator_context(
                     findings, negative_entities, positive_entities,
-                    topic=topic, do_research=(batch_num % 5 == 0),
+                    topic=topic, do_research=(batch_num % 3 == 0),
                     narrative=updated_narrative,
                     user_notes=current_user_notes,
                     recent_questions=final_questions,

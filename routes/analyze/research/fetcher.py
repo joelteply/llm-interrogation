@@ -27,18 +27,24 @@ class FetchResult:
 
 def normalize_url(url: str) -> str:
     """Extract real URL from tracking redirects."""
-    # Bing tracking
+    import base64
+    import re
+
+    # Bing tracking - extract u= parameter directly with regex (query parsing breaks on !&&)
     if 'bing.com/ck/a' in url:
-        parsed = urlparse(url)
-        params = parse_qs(parsed.query)
-        if 'u' in params:
-            encoded = params['u'][0]
-            if encoded.startswith('a1'):
-                import base64
-                try:
-                    return base64.b64decode(encoded[2:]).decode('utf-8')
-                except:
-                    pass
+        match = re.search(r'[&?]u=(a1[A-Za-z0-9+/=]+)', url)
+        if match:
+            encoded = match.group(1)[2:]  # Strip 'a1' prefix
+            # Add padding if needed
+            padding = 4 - (len(encoded) % 4)
+            if padding != 4:
+                encoded += '=' * padding
+            try:
+                decoded = base64.b64decode(encoded).decode('utf-8')
+                print(f"[url] Decoded Bing redirect: {decoded[:60]}")
+                return decoded
+            except Exception as e:
+                print(f"[url] Failed to decode Bing URL: {e}")
 
     # Google tracking
     if 'google.com/url' in url:
