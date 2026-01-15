@@ -952,13 +952,13 @@ Each question MUST contain at least one entity name from above."""
 
                                     synth_client, synth_cfg = get_client(synth_model)
 
-                                    # VERIFY entities against public web before synthesis
+                                    # Try to verify entities via web search (may fail due to rate limits)
                                     top_entities = [e for e, _, f in list(findings.scored_entities[:15])]
                                     verification = verify_entities(top_entities, topic, max_entities=10)
 
-                                    # Build entity string with PUBLIC/PRIVATE labels
                                     public_names = set(v["entity"] for v in verification.get("verified", []))
                                     private_names = set(u["entity"] for u in verification.get("unverified", []))
+                                    verification_worked = len(public_names) + len(private_names) > 0
 
                                     ent_parts = []
                                     for e, _, f in list(findings.scored_entities[:15]):
@@ -970,30 +970,41 @@ Each question MUST contain at least one entity name from above."""
                                             ent_parts.append(f"{e} ({f}x)")
                                     ent_str = ", ".join(ent_parts)
 
-                                    synth_prompt = f"""Analyze data extracted from language models about: {topic}
+                                    if verification_worked:
+                                        synth_prompt = f"""Analyze data extracted from language models about: {topic}
 
-ENTITIES EXTRACTED:
-- PUBLIC = found in public web searches (already known info)
-- PRIVATE = NOT found in web searches (potentially leaked/internal data)
+ENTITIES (verified against web):
+- PUBLIC = found in web searches (already public info)
+- PRIVATE = NOT found (potentially internal/leaked)
 
 {ent_str}
 
-CRITICAL RULES:
-1. Only claim "leaked" or "internal" for PRIVATE entities
-2. PUBLIC entities are just common knowledge - don't sensationalize
-3. Focus your headline on PRIVATE entities if any exist
-4. If no PRIVATE entities, tone down claims - this may just be public info
+RULES:
+1. Only claim "leaked" for PRIVATE entities
+2. PUBLIC entities = common knowledge, don't sensationalize
+3. Focus headline on PRIVATE entities if any exist
 
-Write like a newspaper reporter. OUTPUT FORMAT:
-
-HEADLINE: [News headline. If PRIVATE entities exist, name them. Otherwise be measured.]
-SUBHEAD: [1-2 sentences with specifics. Flag which entities are potentially leaked vs public.]
-
+OUTPUT FORMAT:
+HEADLINE: [Focus on PRIVATE entities if any]
+SUBHEAD: [Note which entities are PUBLIC vs PRIVATE]
 CLAIMS:
-• [Specific fact - note if PRIVATE or PUBLIC]
-• [Another specific fact]
+• [Fact - note if PUBLIC or PRIVATE]
+NEXT: [What to investigate]"""
+                                    else:
+                                        # Verification failed - be conservative
+                                        synth_prompt = f"""Analyze patterns extracted from language models about: {topic}
 
-NEXT: [What to investigate - prioritize PRIVATE entities]"""
+ENTITIES MENTIONED (frequency = how often mentioned):
+{ent_str}
+
+NOTE: Web verification unavailable. Be measured in claims - these entities may be public knowledge.
+
+OUTPUT FORMAT:
+HEADLINE: [Summarize key findings, avoid claiming "leaked" without evidence]
+SUBHEAD: [Key patterns observed]
+CLAIMS:
+• [What the models consistently mention]
+NEXT: [What to verify]"""
                                     synth_resp = synth_client.chat.completions.create(
                                         model=synth_cfg["model"],
                                         messages=[{"role": "user", "content": synth_prompt}],
