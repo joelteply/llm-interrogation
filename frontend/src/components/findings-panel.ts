@@ -297,6 +297,8 @@ export class FindingsPanel extends LitElement {
     this._unsubscribes.push(
       probeState.subscribe((s) => {
         this._probeState = s;
+        // Always sync findings from state (parent also passes via property, but state is authoritative during probes)
+        // This ensures SSE updates during probing are reflected
         if (s.findings) {
           this.findings = s.findings;
         }
@@ -305,6 +307,11 @@ export class FindingsPanel extends LitElement {
         this._groundTruth = s.facts;
       })
     );
+    // Initial sync from current state
+    const currentState = probeState.get();
+    if (currentState.findings) {
+      this.findings = currentState.findings;
+    }
   }
 
   disconnectedCallback() {
