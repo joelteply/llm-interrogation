@@ -710,8 +710,10 @@ export class WordCloud extends LitElement {
       `;
     }
 
-    // Separate refusals from regular matches
+    // Separate first mentions (genuine reveals) from echoes
     const regularMatches = matches.filter(m => !m.is_refusal);
+    const firstMentions = regularMatches.filter(m => m.is_first_mention);
+    const echoes = regularMatches.filter(m => !m.is_first_mention);
     const refusals = matches.filter(m => m.is_refusal);
 
     return html`
@@ -721,18 +723,41 @@ export class WordCloud extends LitElement {
         @mouseenter=${this.cancelHoverHideTimer}
         @mouseleave=${this.startHoverHideTimer}
       >
-        <div class="hover-popup-title">${this.hoveredWord}: ${matches.length} match${matches.length !== 1 ? 'es' : ''}</div>
+        <div class="hover-popup-title">
+          ${this.hoveredWord}: ${firstMentions.length} reveal${firstMentions.length !== 1 ? 's' : ''}${echoes.length > 0 ? ` (+${echoes.length} echo${echoes.length !== 1 ? 'es' : ''})` : ''}
+        </div>
         <div class="hover-popup-content">
-          ${regularMatches.map((m, i) => html`
-            <div class="hover-match">
-              <div class="hover-match-header">
-                <span class="hover-match-num">${i + 1}.</span>
-                <span class="hover-match-model">${m.model.split('/').pop()}</span>
+          ${firstMentions.length > 0 ? html`
+            <div class="hover-section-label" style="color: #3fb950; font-size: 10px; margin-bottom: 4px;">FIRST MENTIONS (genuine reveals)</div>
+            ${firstMentions.map((m, i) => html`
+              <div class="hover-match" style="border-left: 2px solid #3fb950; padding-left: 8px; margin-left: -8px;">
+                <div class="hover-match-header">
+                  <span class="hover-match-num">${i + 1}.</span>
+                  <span class="hover-match-model">${m.model.split('/').pop()}</span>
+                </div>
+                <div class="hover-match-question">"${m.question}"</div>
+                <div class="hover-match-context">${m.context || '(no context)'}</div>
               </div>
-              <div class="hover-match-question">"${m.question}"</div>
-              <div class="hover-match-context">${m.context || '(no context)'}</div>
+            `)}
+          ` : html`
+            <div style="color: #f85149; font-size: 11px; margin-bottom: 8px;">
+              No independent reveals - all mentions were echoes from conversation context
             </div>
-          `)}
+          `}
+          ${echoes.length > 0 ? html`
+            <div class="hover-section-label" style="color: #6e7681; font-size: 10px; margin-top: 8px; margin-bottom: 4px;">
+              ECHOES (${echoes.length} - entity was already in conversation)
+            </div>
+            ${echoes.slice(0, 2).map((m, i) => html`
+              <div class="hover-match" style="opacity: 0.6; border-left: 1px solid #484f58; padding-left: 8px; margin-left: -8px;">
+                <div class="hover-match-header">
+                  <span class="hover-match-model" style="font-size: 10px;">${m.model.split('/').pop()}</span>
+                </div>
+                <div class="hover-match-context" style="font-size: 10px;">${m.context?.substring(0, 60) || '...'}</div>
+              </div>
+            `)}
+            ${echoes.length > 2 ? html`<div style="color: #6e7681; font-size: 10px;">...and ${echoes.length - 2} more echoes</div>` : null}
+          ` : null}
           ${refusals.length > 0 ? html`
             <div class="hover-refusal">
               ${refusals.map(r => html`

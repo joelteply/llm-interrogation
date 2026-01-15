@@ -81,6 +81,7 @@ export interface EntityMatch {
   question: string;
   context: string;
   is_refusal: boolean;
+  is_first_mention?: boolean;  // True if this was a genuine reveal (not an echo from context)
 }
 
 // Findings aggregate
