@@ -867,9 +867,22 @@ export class ProjectView extends LitElement {
               });
             }
 
-            const updatedFindings: Findings | null = s.findings
+            // Create or update findings with entity_matches
+            const updatedFindings: Findings = s.findings
               ? { ...s.findings, entity_matches: updatedMatches as Record<string, EntityMatch[]> }
-              : null;
+              : {
+                  entities: {},
+                  by_model: {},
+                  by_question: {},
+                  corpus_size: 0,
+                  refusal_rate: 0,
+                  entity_matches: updatedMatches as Record<string, EntityMatch[]>
+                };
+
+            // Also update entities count for word cloud
+            for (const entity of (resp.entities || [])) {
+              updatedFindings.entities[entity] = (updatedFindings.entities[entity] || 0) + 1;
+            }
 
             return { ...s, responses: newResponses, findings: updatedFindings };
           });
