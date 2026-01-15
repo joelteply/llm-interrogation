@@ -28,6 +28,12 @@ class Findings:
     sentence_cooccurrence_counts: Counter = field(default_factory=Counter)  # Same-sentence pairs (stronger)
     by_model: Dict[str, Counter] = field(default_factory=dict)
 
+    # Track FIRST mention per model (to detect echoes vs genuine revelations)
+    # entity -> set of models that mentioned it FIRST (before it was in their context)
+    first_mentions: Dict[str, Set[str]] = field(default_factory=dict)
+    # model -> set of entities already in that model's conversation context
+    model_context: Dict[str, Set[str]] = field(default_factory=dict)
+
     # Relationship tracking (subject, predicate, object) -> count
     relationship_counts: Counter = field(default_factory=Counter)  # "A|||worked_at|||B" -> count
 
@@ -59,7 +65,8 @@ class Findings:
         self._scored_entities_cache = None
 
     def add_response(self, entities: List[str], model: str, is_refusal: bool = False,
-                     sentence_pairs: Optional[List[Tuple[str, str]]] = None):
+                     sentence_pairs: Optional[List[Tuple[str, str]]] = None,
+                     question_entities: Optional[Set[str]] = None):
         """
         Add entities from a single response with correlation tracking.
 
@@ -68,6 +75,7 @@ class Findings:
             model: Model that generated response
             is_refusal: Whether response was a refusal
             sentence_pairs: Entity pairs from same sentence (stronger correlation signal)
+            question_entities: Entities that were in the question/prompt (to detect echoes)
         """
         self.corpus_size += 1
         self._clear_caches()
@@ -80,13 +88,32 @@ class Findings:
         # This catches LLM hedging that sneaks through extraction
         entities = [e for e in entities if not is_entity_refusal(e)]
 
-        # Count entities
+        # Initialize model context tracking
+        if model not in self.model_context:
+            self.model_context[model] = set()
+
+        # Track first mentions vs echoes
         for e in entities:
             self.entity_counts[e] += 1
 
             if model not in self.by_model:
                 self.by_model[model] = Counter()
             self.by_model[model][e] += 1
+
+            # Check if this is a FIRST mention (not in model's context or question)
+            e_lower = e.lower()
+            in_context = e_lower in {x.lower() for x in self.model_context[model]}
+            in_question = question_entities and e_lower in {x.lower() for x in question_entities}
+
+            if not in_context and not in_question:
+                # This is a genuine first reveal by this model
+                if e not in self.first_mentions:
+                    self.first_mentions[e] = set()
+                self.first_mentions[e].add(model)
+
+        # Update model context with all entities from this response
+        # (future responses from this model will treat these as "in context")
+        self.model_context[model].update(entities)
 
         # Track sentence-level co-occurrences (strongest signal)
         if sentence_pairs:
@@ -277,13 +304,30 @@ class Findings:
                 count += 1
         return count
 
+    def first_mention_count(self, entity: str) -> int:
+        """
+        Count how many models revealed this entity FIRST (not as an echo).
+
+        This is the true corroboration count - models that independently
+        produced this entity before it was in their conversation context.
+        """
+        return len(self.first_mentions.get(entity, set()))
+
+    def is_echo_only(self, entity: str) -> bool:
+        """
+        Check if all mentions of this entity are echoes (no genuine first reveals).
+
+        Returns True if entity was ONLY produced after being in prompt/context.
+        """
+        return self.first_mention_count(entity) == 0 and self.entity_counts.get(entity, 0) > 0
+
     def score_entity(self, entity: str) -> float:
         """
-        Score an entity based on frequency, specificity, connectivity, and CORROBORATION.
+        Score an entity based on frequency, specificity, connectivity, and TRUE CORROBORATION.
 
         Higher score = more important for narrative.
-        - Multi-model agreement = strong signal (corroborated)
-        - Single-model only = likely noise or hallucination
+        - Multi-model FIRST mentions = strong signal (independent reveals)
+        - Echo-only = low signal (just repeating from context)
         - Dead ends (leading only to noise) get penalized
         """
         if entity in self._scores_cache:
@@ -293,14 +337,22 @@ class Findings:
         connections = len(self.get_connections(entity))
         base = score_concept(entity, frequency, connections)
 
-        # CORROBORATION BONUS/PENALTY - multi-model agreement is key signal
-        models = self.model_count(entity)
-        if models >= 3:
-            base *= 2.0  # Strong corroboration - 3+ models agree
-        elif models == 2:
-            base *= 1.5  # Some corroboration
-        elif models == 1 and len(self.by_model) > 3:
-            base *= 0.3  # Single model only = suspicious (likely noise/hallucination)
+        # TRUE CORROBORATION - use first_mention_count (independent reveals)
+        # not model_count (which includes echoes)
+        first_mentions = self.first_mention_count(entity)
+        total_models = self.model_count(entity)
+
+        if first_mentions >= 3:
+            base *= 2.5  # Strong: 3+ models independently revealed this
+        elif first_mentions == 2:
+            base *= 1.8  # Good: 2 independent reveals
+        elif first_mentions == 1:
+            if total_models > first_mentions:
+                base *= 1.2  # One reveal, echoed by others
+            else:
+                base *= 0.8  # Single reveal, single model
+        elif first_mentions == 0 and frequency > 0:
+            base *= 0.1  # ECHO ONLY - all mentions came from prompt context
 
         # Apply dead-end penalty - entities that only lead to noise get downweighted
         if self.is_dead_end(entity):
@@ -353,9 +405,18 @@ class Findings:
 
     def to_dict(self) -> dict:
         """Convert to dict for JSON serialization."""
-        # Include model count (corroboration) for each scored entity
+        # Include corroboration data for each scored entity
+        # first_mentions = independent reveals (not echoes)
+        # models = total models that mentioned (includes echoes)
         scored_with_models = [
-            {"entity": e, "score": round(s, 2), "frequency": f, "models": self.model_count(e)}
+            {
+                "entity": e,
+                "score": round(s, 2),
+                "frequency": f,
+                "models": self.model_count(e),
+                "first_mentions": self.first_mention_count(e),
+                "echo_only": self.is_echo_only(e)
+            }
             for e, s, f in self.scored_entities[:30]
         ]
         return {

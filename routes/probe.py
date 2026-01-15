@@ -887,7 +887,10 @@ Each question MUST contain at least one entity name from above."""
                                 entities=entities,
                                 technique=result["technique"]
                             )
-                            findings.add_response(entities, model_key, refusal)
+                            # Extract entities from question to detect echoes
+                            question_ents = set(extract_facts_fast(result["question"]))
+                            question_ents.add(topic.lower())  # Topic itself is always "in prompt"
+                            findings.add_response(entities, model_key, refusal, question_entities=question_ents)
 
                             if model_key not in model_performance:
                                 model_performance[model_key] = {"entities": 0, "refusals": 0, "unique": set(), "queries": 0}
@@ -1309,7 +1312,10 @@ def run_cycle():
                                                       if e1 not in hidden_entities and e2 not in hidden_entities]
                                     refusal = is_refusal(resp_text)
 
-                                    state.findings.add_response(entities, model_key, refusal, sentence_pairs)
+                                    # Extract entities from prompt to track echoes vs first mentions
+                                    prompt_ents = set(extract_facts_fast(prompt))
+                                    prompt_ents.add(topic.lower())
+                                    state.findings.add_response(entities, model_key, refusal, sentence_pairs, question_entities=prompt_ents)
 
                                     response_obj = {
                                         "prompt_index": p_idx,
