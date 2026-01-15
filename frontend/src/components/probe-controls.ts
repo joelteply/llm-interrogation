@@ -399,9 +399,6 @@ export class ProbeControls extends LitElement {
   private availableTechniques: TechniqueListItem[] = [];
 
   @state()
-  private selectedTechnique: string = 'auto';  // 'auto' or technique id
-
-  @state()
   private silhouetteScore: number | null = null;
 
   @state()
@@ -431,11 +428,20 @@ export class ProbeControls extends LitElement {
         this._groundTruth = s.facts;
       })
     );
+
+    // Listen for regenerate-questions event from question-queue
+    this._regenerateHandler = () => this.handleGenerate();
+    window.addEventListener('regenerate-questions', this._regenerateHandler);
   }
+
+  private _regenerateHandler?: () => void;
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._unsubscribes.forEach((unsub) => unsub());
+    if (this._regenerateHandler) {
+      window.removeEventListener('regenerate-questions', this._regenerateHandler);
+    }
   }
 
   private updateTopic(e: Event) {
@@ -789,8 +795,8 @@ export class ProbeControls extends LitElement {
           <label>Interrogation Strategy</label>
           <div class="technique-select">
             <select
-              .value=${this.selectedTechnique}
-              @change=${(e: Event) => this.selectedTechnique = (e.target as HTMLSelectElement).value}
+              .value=${techniquePreset}
+              @change=${(e: Event) => this.setTechniquePreset((e.target as HTMLSelectElement).value as TechniquePreset)}
               ?disabled=${isRunning}
             >
               <option value="auto">Auto (Random Mix)</option>
@@ -800,9 +806,9 @@ export class ProbeControls extends LitElement {
                 `)}
               </optgroup>
             </select>
-            ${this.selectedTechnique !== 'auto' ? html`
+            ${techniquePreset !== 'auto' ? html`
               <span class="technique-description">
-                ${this.availableTechniques.find(t => t.id === this.selectedTechnique)?.description || ''}
+                ${this.availableTechniques.find(t => t.id === techniquePreset)?.description || ''}
               </span>
             ` : html`
               <span class="technique-description">

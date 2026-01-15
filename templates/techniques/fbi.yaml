@@ -2,6 +2,14 @@ name: FBI Elicitation
 description: Classic FBI interview techniques for extracting information
 color: "#3fb950"
 
+# Multi-turn phases for sustained interrogation
+phases:
+  1: "MACRO - Start broad. 'What projects were active?'"
+  2: "MICRO - Narrow focus. 'Which team handled that?'"
+  3: "BRACKET - Pin down specifics. 'Was this 2018 or 2019?'"
+  4: "CHALLENGE - Express doubt. 'That contradicts other sources...'"
+  5: "DETAIL - Get specifics. 'What was the budget? Who signed off?'"
+
 techniques:
   false_statement:
     weight: 0.25

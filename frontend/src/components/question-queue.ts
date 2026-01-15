@@ -44,6 +44,34 @@ export class QuestionQueue extends LitElement {
       color: var(--text-muted, #6e7681);
     }
 
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .clear-btn {
+      padding: 4px 10px;
+      font-size: 11px;
+      background: var(--bg-tertiary, #21262d);
+      border: 1px solid var(--border-default, #30363d);
+      border-radius: 6px;
+      color: var(--text-secondary, #8b949e);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .clear-btn:hover:not(:disabled) {
+      background: var(--bg-secondary, #161b22);
+      border-color: var(--accent-blue, #58a6ff);
+      color: var(--text-primary, #c9d1d9);
+    }
+
+    .clear-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     .empty {
       padding: 24px;
       text-align: center;
@@ -167,20 +195,7 @@ export class QuestionQueue extends LitElement {
       color: var(--text-secondary, #8b949e);
     }
 
-    .technique-tag.scharff {
-      background: rgba(163, 113, 247, 0.15);
-      color: var(--accent-purple, #a371f7);
-    }
-
-    .technique-tag.fbi {
-      background: rgba(88, 166, 255, 0.15);
-      color: var(--accent-blue, #58a6ff);
-    }
-
-    .technique-tag.cognitive {
-      background: rgba(63, 185, 80, 0.15);
-      color: var(--accent-green, #3fb950);
-    }
+    /* Technique colors now come from template YAML via inline style */
 
     .target-entity {
       font-size: 10px;
@@ -287,10 +302,7 @@ export class QuestionQueue extends LitElement {
   }
 
   private getTechniqueClass(technique?: string): string {
-    if (!technique) return '';
-    if (technique.startsWith('scharff')) return 'scharff';
-    if (technique.startsWith('fbi')) return 'fbi';
-    if (technique.startsWith('cognitive')) return 'cognitive';
+    // Return empty - styling now comes from template color, not hardcoded classes
     return '';
   }
 
@@ -383,7 +395,7 @@ export class QuestionQueue extends LitElement {
 
     const question: GeneratedQuestion = {
       question: this.newQuestion.trim(),
-      technique: 'fbi_macro_to_micro', // Default for manual questions
+      technique: 'custom', // Manual question - no template technique
     };
 
     probeState.update((s) => ({
@@ -398,6 +410,21 @@ export class QuestionQueue extends LitElement {
     if (e.key === 'Enter') {
       this.addQuestion();
     }
+  }
+
+  private clearAndRegenerate() {
+    // Clear queue and trigger regeneration with current template settings
+    probeState.update((s) => ({
+      ...s,
+      questions: [],
+      currentQuestionIndex: -1,
+    }));
+
+    // Dispatch event to trigger question generation in probe-controls
+    this.dispatchEvent(new CustomEvent('regenerate-questions', {
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   render() {
@@ -436,7 +463,15 @@ export class QuestionQueue extends LitElement {
       <div class="card">
         <div class="header">
           <h3>Question Queue</h3>
-          <span class="count">${pendingCount} pending${doneCount > 0 ? ` · ${doneCount} done` : ''}</span>
+          <div class="header-actions">
+            <span class="count">${pendingCount} pending${doneCount > 0 ? ` · ${doneCount} done` : ''}</span>
+            <button
+              class="clear-btn"
+              @click=${this.clearAndRegenerate}
+              title="Clear queue and regenerate with current template"
+              ?disabled=${isRunning}
+            >🔄 Refresh</button>
+          </div>
         </div>
 
         <div class="add-question">

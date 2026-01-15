@@ -32,30 +32,21 @@ export interface ProbeConfig {
   auto_curate?: boolean;         // Let AI clean noise while running
 }
 
-export type TechniquePreset = 'balanced' | 'aggressive' | 'subtle';
+// 'auto' = random mix, or any template ID from /api/techniques
+export type TechniquePreset = 'auto' | string;
 
 // Question with technique annotation
 export interface GeneratedQuestion {
   question: string;
   technique: TechniqueType | string;  // Can be custom technique name
-  template?: string;  // Which template was used (e.g., "FBI Elicitation", "Mossad/Shin Bet")
+  template?: string;  // Which template was used (from templates/techniques/*.yaml)
   color?: string;     // Template color from YAML (e.g., "#f85149")
   target_entity?: string;
 }
 
-export type TechniqueType =
-  | 'scharff_illusion'
-  | 'scharff_confirmation'
-  | 'scharff_ignore'
-  | 'fbi_false_statement'
-  | 'fbi_bracketing'
-  | 'fbi_macro_to_micro'
-  | 'fbi_disbelief'
-  | 'fbi_flattery'
-  | 'fbi_half_sentence'
-  | 'cognitive_context'
-  | 'cognitive_perspective'
-  | 'cognitive_reverse';
+// Technique type is now dynamic - loaded from templates/techniques/*.yaml
+// Any string is valid since techniques are defined in YAML files
+export type TechniqueType = string;
 
 // Response from a single model run
 export interface ProbeResponse {
@@ -168,8 +159,11 @@ export interface TechniqueListItem {
   technique_count: number;
 }
 
-// Technique display info
-export const TECHNIQUE_INFO: Record<TechniqueType, { name: string; description: string }> = {
+// Technique display info - legacy map for nice display names
+// NOTE: Techniques now loaded dynamically from YAML files. This is a fallback for display.
+// Unknown techniques will show their raw ID (e.g., "helpfulness_trap" instead of "Helpfulness Trap")
+export const TECHNIQUE_INFO: Record<string, { name: string; description: string }> = {
+  // Classic techniques (for backwards compatibility with saved data)
   scharff_illusion: { name: 'Illusion of Knowing', description: 'Frame as confirming known facts' },
   scharff_confirmation: { name: 'Confirmation', description: 'Present claims to verify' },
   scharff_ignore: { name: 'Ignore Reveals', description: 'Downplay to get more' },

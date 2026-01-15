@@ -102,32 +102,40 @@ Generate at least 2 questions that use PUBLIC facts to probe for PRIVATE connect
     client, cfg = get_client(selected_models[0])
 
     # Build technique instruction based on preset
+    # "auto" = random from all templates, otherwise use specific template ID
     technique_instruction = ""
-    if technique_preset == "auto":
-        # Pick random techniques for variety
-        techniques_used = []
-        for _ in range(min(count, 3)):  # Sample a few techniques
-            tech = get_random_technique()
-            techniques_used.append(f"- {tech['template']}/{tech['technique']}: {tech['prompt'][:100]}...")
-        technique_instruction = f"""
-THIS ROUND'S TECHNIQUES (use these approaches):
-{chr(10).join(techniques_used)}
+    techniques_used = []
+    for _ in range(min(count, 3)):  # Sample a few techniques
+        tech = get_random_technique(technique_preset)  # Respects preset filter
+        techniques_used.append(f"- {tech['template']}/{tech['technique']}: {tech['prompt'][:100]}...")
 
-Mix these techniques across your {count} questions."""
-    elif technique_preset != "balanced" and technique_preset != "aggressive" and technique_preset != "subtle":
-        # Load specific template
+    # Get template info for non-auto presets
+    if technique_preset and technique_preset != "auto":
         templates = load_technique_templates()
         template = next((t for t in templates if t.get("id") == technique_preset), None)
         if template:
-            techniques = template.get("techniques", {})
-            tech_lines = [f"- {k}: {v.get('prompt', '')[:100]}..." for k, v in list(techniques.items())[:4]]
             technique_instruction = f"""
 THIS ROUND'S TECHNIQUE SET: {template.get('name', technique_preset)}
 {template.get('description', '')}
 
-{chr(10).join(tech_lines)}
+TECHNIQUES FROM THIS SET:
+{chr(10).join(techniques_used)}
 
-Use ONLY these techniques for all {count} questions."""
+Use ONLY techniques from this set for your {count} questions."""
+        else:
+            # Template not found, use random
+            technique_instruction = f"""
+THIS ROUND'S TECHNIQUES:
+{chr(10).join(techniques_used)}
+
+Mix these techniques across your {count} questions."""
+    else:
+        # Auto mode - random from all templates
+        technique_instruction = f"""
+THIS ROUND'S TECHNIQUES (randomly selected):
+{chr(10).join(techniques_used)}
+
+Mix these techniques across your {count} questions."""
 
     prompt = INTERROGATOR_PROMPT.format(
         topic=topic,

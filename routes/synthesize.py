@@ -11,7 +11,7 @@ from config import PROJECTS_DIR, get_client
 from interrogator import Findings, build_synthesis_prompt
 from . import probe_bp
 from . import project_storage as storage
-from .helpers import get_project_models, extract_json
+from .helpers import get_project_models, extract_json, is_refusal
 
 
 @probe_bp.route("/api/synthesize", methods=["POST"])
@@ -383,11 +383,13 @@ Return JSON with ACTUAL entity names from the list above:
 
         project["relations"] = existing_relations
 
-        # 2. Update working theory
+        # 2. Update working theory (but reject if it's a refusal)
         new_theory = result.get("working_theory", "")
-        if new_theory:
+        if new_theory and not is_refusal(new_theory):
             project["working_theory"] = new_theory
             project["narrative"] = new_theory
+        elif new_theory:
+            print(f"[CURATE] Rejected refusal working_theory: {new_theory[:100]}...")
 
         # 3. Update hidden entities (bans)
         hidden = set(project.get("hidden_entities", []))

@@ -170,11 +170,26 @@ def load_technique_templates() -> list:
     return templates
 
 
-def get_random_technique() -> dict:
-    """Pick a random technique template and a random technique from it."""
+def get_random_technique(template_id: str = None) -> dict:
+    """
+    Pick a random technique template and a random technique from it.
+
+    Args:
+        template_id: If provided (not None or "auto"), only pick from this specific template.
+                    If None or "auto", pick from any template.
+    """
     templates = load_technique_templates()
     if not templates:
         return {"template": "default", "technique": "direct", "prompt": "Ask directly about the topic.", "color": "#8b949e"}
+
+    # Filter to specific template if requested
+    if template_id and template_id != "auto":
+        matching = [t for t in templates if t.get("id") == template_id]
+        if matching:
+            templates = matching
+            print(f"[TECHNIQUE] Using template: {template_id}")
+        else:
+            print(f"[TECHNIQUE] Template '{template_id}' not found, using all templates")
 
     template = random.choice(templates)
     techniques = template.get("techniques", {})
@@ -199,24 +214,32 @@ def get_technique_info(technique_id: str) -> dict:
     """Look up template info for a specific technique ID."""
     templates = load_technique_templates()
 
-    # Try exact match first, then try stripping common prefixes
-    variants = [technique_id]
-    for prefix in ['fbi_', 'scharff_', 'cognitive_', 'mossad_']:
-        if technique_id.startswith(prefix):
-            variants.append(technique_id[len(prefix):])
-
+    # Search all templates for the technique - no hardcoded prefixes
     for template in templates:
         techniques = template.get("techniques", {})
-        for variant in variants:
-            if variant in techniques:
-                return {
-                    "template": template.get("name", "unknown"),
-                    "technique": technique_id,
-                    "prompt": techniques[variant].get("prompt", ""),
-                    "color": template.get("color", "#8b949e"),
-                }
+        if technique_id in techniques:
+            return {
+                "template": template.get("name", "unknown"),
+                "technique": technique_id,
+                "prompt": techniques[technique_id].get("prompt", ""),
+                "color": template.get("color", "#8b949e"),
+            }
+
     # Fallback if technique not found
     return {"template": "custom", "technique": technique_id, "prompt": "", "color": "#8b949e"}
+
+
+def get_phase_description(template_id: str, phase: int) -> str:
+    """Get phase description from a template's phases field."""
+    templates = load_technique_templates()
+    for template in templates:
+        if template.get("id") == template_id:
+            phases = template.get("phases", {})
+            if phase in phases:
+                return phases[phase]
+            elif str(phase) in phases:
+                return phases[str(phase)]
+    return f"phase {phase}"
 
 
 def get_technique_instruction() -> str:
@@ -229,7 +252,7 @@ def get_all_techniques_for_prompt() -> str:
     """
     Build a formatted list of all valid techniques from YAML templates.
     Includes the actual prompt/instruction for each technique so the AI
-    knows HOW to use it, not just the name.
+    knows HOW to use it, not just the name. Also includes multi-turn phases if defined.
     """
     templates = load_technique_templates()
     if not templates:
@@ -239,16 +262,27 @@ def get_all_techniques_for_prompt() -> str:
     for template in templates:
         template_name = template.get("name", template.get("id", "unknown"))
         techniques = template.get("techniques", {})
+        phases = template.get("phases", {})
+
         if techniques:
             lines = [f"\n## {template_name}"]
+
+            # Include multi-turn phases if defined
+            if phases:
+                lines.append("  MULTI-TURN PHASES:")
+                for phase_num in sorted(phases.keys()):
+                    lines.append(f"    Phase {phase_num}: {phases[phase_num]}")
+                lines.append("")  # Blank line before techniques
+
+            lines.append("  TECHNIQUES:")
             for tech_id, tech_data in techniques.items():
                 prompt = tech_data.get("prompt", "")
                 if prompt:
                     # Truncate long prompts but keep enough to be useful
                     prompt_preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
-                    lines.append(f"  - {tech_id}: {prompt_preview}")
+                    lines.append(f"    - {tech_id}: {prompt_preview}")
                 else:
-                    lines.append(f"  - {tech_id}")
+                    lines.append(f"    - {tech_id}")
             sections.append("\n".join(lines))
 
     return "\n".join(sections)
@@ -876,15 +910,11 @@ Generate questions that CONTINUE the strategy based on the model's recent respon
             strategy = stats_data.get("assigned_strategy")
             if strategy:
                 phase = stats_data.get("strategy_phase", 1)
-                # Map phase to description so AI knows what to do next
-                phase_desc = {
-                    "scharff": {1: "RAPPORT", 2: "ILLUSION", 3: "CONFIRMATION", 4: "IGNORE", 5: "EXTRACT"},
-                    "fbi": {1: "MACRO", 2: "MICRO", 3: "BRACKET", 4: "CHALLENGE", 5: "DETAIL"},
-                    "entropy": {1: "SCATTER", 2: "CLUSTER", 3: "LIE", 4: "SPECULATE"},
-                }.get(strategy, {}).get(phase, f"phase {phase}")
+                # Get phase description from YAML template dynamically
+                phase_desc = get_phase_description(strategy, phase)
                 thread_lines.append(f"  STRATEGY: {strategy} → NOW DO: {phase_desc} (phase {phase})")
             else:
-                thread_lines.append(f"  STRATEGY: Not assigned - pick one: scharff, fbi, or entropy")
+                thread_lines.append(f"  STRATEGY: Not assigned yet - pick a template from available techniques")
 
             # Recent exchanges - the interrogator needs this to continue the thread
             if thread.messages:
@@ -1055,6 +1085,7 @@ def is_refusal(text: str) -> bool:
         "i don't have", "i do not have", "no information",
         "cannot provide", "can't provide", "unable to",
         "i'm sorry", "i apologize", "as an ai",
+        "as openai", "as an openai", "as a language model",
         "don't have access", "no data", "not available",
         "cannot confirm", "can't confirm", "no record",
         "private information", "confidential", "not public",

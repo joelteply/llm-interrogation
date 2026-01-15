@@ -70,7 +70,7 @@ def get_models():
         try:
             from openai import OpenAI
             client = OpenAI()
-            exclude_openai = ['audio', 'realtime', 'tts', 'transcribe', 'whisper', 'embed', 'ft:', 'search', 'diarize']
+            exclude_openai = ['audio', 'realtime', 'tts', 'transcribe', 'whisper', 'embed', 'ft:', 'search', 'diarize', 'instruct']
             for m in client.models.list().data:
                 if ("gpt-4" in m.id or "gpt-3.5" in m.id):
                     if not any(ex in m.id for ex in exclude_openai):
@@ -78,14 +78,16 @@ def get_models():
         except Exception as e:
             print(f"[ERROR] OpenAI API models.list() failed: {e} - no OpenAI models available")
 
-    # xAI - only grok chat models (exclude image, vision)
+    # xAI - only grok chat models (exclude image, vision, embedding, base models)
     if os.environ.get("XAI_API_KEY"):
         try:
             from openai import OpenAI
             client = OpenAI(base_url="https://api.x.ai/v1", api_key=os.environ.get("XAI_API_KEY"))
-            exclude_xai = ['vision', 'image', 'embed']
+            exclude_xai = ['vision', 'image', 'embed', 'audio', 'base']
             for m in client.models.list().data:
-                if not any(ex in m.id.lower() for ex in exclude_xai):
+                model_lower = m.id.lower()
+                # Must be a grok model AND not excluded
+                if 'grok' in model_lower and not any(ex in model_lower for ex in exclude_xai):
                     models.append({"id": f"xai/{m.id}", "name": m.id, "provider": "xAI"})
         except Exception as e:
             print(f"[ERROR] xAI API models.list() failed: {e} - no xAI models available")
@@ -202,7 +204,7 @@ def get_available_models_list():
             from openai import OpenAI
             client = OpenAI()
             for m in client.models.list().data:
-                if ("gpt-4" in m.id or "gpt-3.5" in m.id) and not any(ex in m.id for ex in ['audio', 'realtime', 'tts']):
+                if ("gpt-4" in m.id or "gpt-3.5" in m.id) and not any(ex in m.id for ex in ['audio', 'realtime', 'tts', 'instruct']):
                     models.append(f"openai/{m.id}")
         except:
             pass
@@ -212,8 +214,11 @@ def get_available_models_list():
         try:
             from openai import OpenAI
             client = OpenAI(base_url="https://api.x.ai/v1", api_key=os.environ.get("XAI_API_KEY"))
+            # Only include known chat models (grok), exclude vision/image/embedding
+            exclude_xai = ['vision', 'image', 'embed', 'audio', 'base']
             for m in client.models.list().data:
-                if 'vision' not in m.id.lower() and 'image' not in m.id.lower():
+                model_lower = m.id.lower()
+                if 'grok' in model_lower and not any(ex in model_lower for ex in exclude_xai):
                     models.append(f"xai/{m.id}")
         except:
             pass
@@ -308,9 +313,11 @@ def run_probe():
     accumulate = data.get("accumulate", True)
     infinite_mode = data.get("infinite_mode", False)
     auto_curate = data.get("auto_curate", True)
+    technique_preset = data.get("technique_preset", "auto")  # "auto" or template ID
+    print(f"[PROBE] technique_preset: {technique_preset}")
 
     def generate():
-        nonlocal negative_entities, positive_entities, models, auto_curate
+        nonlocal negative_entities, positive_entities, models, auto_curate, technique_preset
         try:
             print(f"[PROBE DEBUG] models from request: {models}")
             print(f"[PROBE DEBUG] auto_survey: {auto_survey}")
@@ -534,7 +541,7 @@ Return JSON only:
                 techniques_used: list[dict] = []
                 technique_prompts: list[str] = []
                 for _ in range(min(question_count, 3)):
-                    tech = get_random_technique()
+                    tech = get_random_technique(technique_preset)
                     techniques_used.append(tech)  # Keep full dict for template/color
                     technique_prompts.append(f"- {tech['technique']}: {tech['prompt'][:150]}...")
                 if technique_prompts:
@@ -757,7 +764,7 @@ Mix these techniques across your {question_count} questions."""
                             # Add techniques and entity targeting
                             bg_techniques = []
                             for _ in range(3):
-                                tech = get_random_technique()
+                                tech = get_random_technique(technique_preset)
                                 bg_techniques.append(f"- {tech['technique']}: {tech['prompt'][:100]}...")
 
                             top_entities = [e for e, _, _ in findings.scored_entities[:10]]
@@ -1003,16 +1010,17 @@ Each question MUST contain at least one entity name from above."""
                                 responses_since_synth = 0
                                 try:
                                     print(f"[PROBE] Triggering SYNCHRONOUS synthesis with {len(findings.scored_entities)} entities...")
-                                    # Use first available model from project (prefer llama/deepseek)
-                                    synth_model = None
+
+                                    # Build prioritized list of models to try for synthesis
+                                    # Prefer llama/deepseek (less likely to refuse), then try others
+                                    synth_candidates = []
                                     for m in round_models:
                                         if 'llama' in m.lower() or 'deepseek' in m.lower():
-                                            synth_model = m
-                                            break
-                                    if not synth_model:
-                                        synth_model = round_models[0] if round_models else "groq/llama-3.1-8b-instant"
-
-                                    synth_client, synth_cfg = get_client(synth_model)
+                                            synth_candidates.insert(0, m)  # Preferred models first
+                                        else:
+                                            synth_candidates.append(m)
+                                    if not synth_candidates:
+                                        synth_candidates = ["groq/llama-3.1-8b-instant"]
 
                                     # Try to verify entities via web search (may fail due to rate limits)
                                     top_entities = [e for e, _, f in list(findings.scored_entities[:15])]
@@ -1067,24 +1075,45 @@ SUBHEAD: [Key patterns observed]
 CLAIMS:
 • [What the models consistently mention]
 NEXT: [What to verify]"""
-                                    synth_resp = synth_client.chat.completions.create(
-                                        model=synth_cfg["model"],
-                                        messages=[{"role": "user", "content": synth_prompt}],
-                                        temperature=0.4,
-                                        max_tokens=1200
-                                    )
-                                    narrative = synth_resp.choices[0].message.content.strip()
-                                    # Save immediately with timestamp
-                                    narrative_timestamp = datetime.now().isoformat()
-                                    if project_name and storage.project_exists(project_name):
-                                        with get_project_lock():
-                                            proj_data = storage.load_project_meta(project_name)
-                                            proj_data["narrative"] = narrative
-                                            proj_data["working_theory"] = narrative
-                                            proj_data["narrative_updated"] = narrative_timestamp
-                                            storage.save_project_meta(project_name, proj_data)
-                                    print(f"[PROBE] *** SYNTH SUCCESS *** Saved narrative ({len(narrative)} chars)")
-                                    yield f"data: {json.dumps({'type': 'narrative', 'text': narrative})}\n\n"
+
+                                    # Try each model until we get a non-refusal response
+                                    narrative = None
+                                    for synth_model in synth_candidates:
+                                        try:
+                                            synth_client, synth_cfg = get_client(synth_model)
+                                            synth_resp = synth_client.chat.completions.create(
+                                                model=synth_cfg["model"],
+                                                messages=[{"role": "user", "content": synth_prompt}],
+                                                temperature=0.4,
+                                                max_tokens=1200
+                                            )
+                                            candidate_narrative = synth_resp.choices[0].message.content.strip()
+
+                                            if is_refusal(candidate_narrative):
+                                                print(f"[PROBE] {synth_model} refused synthesis, trying next model...")
+                                                continue  # Try next model
+                                            else:
+                                                narrative = candidate_narrative
+                                                print(f"[PROBE] {synth_model} succeeded for synthesis")
+                                                break  # Got good response
+                                        except Exception as model_err:
+                                            print(f"[PROBE] {synth_model} synthesis error: {model_err}, trying next...")
+                                            continue
+
+                                    if narrative:
+                                        # Save immediately with timestamp
+                                        narrative_timestamp = datetime.now().isoformat()
+                                        if project_name and storage.project_exists(project_name):
+                                            with get_project_lock():
+                                                proj_data = storage.load_project_meta(project_name)
+                                                proj_data["narrative"] = narrative
+                                                proj_data["working_theory"] = narrative
+                                                proj_data["narrative_updated"] = narrative_timestamp
+                                                storage.save_project_meta(project_name, proj_data)
+                                        print(f"[PROBE] *** SYNTH SUCCESS *** Saved narrative ({len(narrative)} chars)")
+                                        yield f"data: {json.dumps({'type': 'narrative', 'text': narrative})}\n\n"
+                                    else:
+                                        print(f"[PROBE] All {len(synth_candidates)} models refused synthesis")
                                 except Exception as synth_err:
                                     print(f"[PROBE] Synthesis error (non-fatal): {synth_err}")
 
@@ -1219,7 +1248,7 @@ NEXT: [What to verify]"""
                 techniques_used: list[dict] = []
                 technique_prompts: list[str] = []
                 for _ in range(min(question_count, 3)):
-                    tech = get_random_technique()
+                    tech = get_random_technique(technique_preset)
                     techniques_used.append(tech)  # Keep full dict for template/color
                     technique_prompts.append(f"- {tech['technique']}: {tech['prompt'][:150]}...")
                 if technique_prompts:

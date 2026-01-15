@@ -87,7 +87,7 @@ const initialProbeState: ProbeState = {
   selectedModels: [],  // Empty = auto-survey all models
   runsPerQuestion: 20,
   questionCount: 5,
-  techniquePreset: 'balanced',
+  techniquePreset: 'auto',
   isRunning: false,
   isPaused: false,
   isGenerating: false,

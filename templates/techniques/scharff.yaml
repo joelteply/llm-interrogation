@@ -2,6 +2,14 @@ name: Scharff Technique
 description: WWII interrogator Hanns Scharff's subtle approach - make them think you already know
 color: "#8b949e"
 
+# Multi-turn phases for sustained interrogation
+phases:
+  1: "RAPPORT - Casual, conversational. 'I was reading about [topic]...'"
+  2: "ILLUSION - Demonstrate knowledge. 'Sources confirm X happened...'"
+  3: "CONFIRMATION - Seek validation. 'This aligns with reports that...'"
+  4: "IGNORE - Downplay reveals. 'That's consistent with what I have...'"
+  5: "EXTRACT - Now dig deeper. 'What else happened around that time?'"
+
 techniques:
   illusion_of_knowledge:
     weight: 0.35
