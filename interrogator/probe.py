@@ -167,44 +167,53 @@ def build_continuation_prompts(
     """
     Build continuation-style prompts based on validated findings.
 
-    Instead of questions, we provide partial statements that
-    the model completes - revealing more of its knowledge.
+    Uses natural verb starters so the model completes real sentences,
+    revealing more of its knowledge through completion patterns.
     """
+    import random
     prompts = []
 
     # Get top scored entities for prompt construction
     scored = findings.scored_entities[:10]
     cooccurrences = findings.validated_cooccurrences[:5]
 
-    # Base continuation prompt
+    # Verb starters for natural flow
+    entity_verbs = [
+        "worked with", "collaborated with", "was involved in",
+        "founded", "led", "created", "developed", "managed"
+    ]
+    relationship_verbs = [
+        "worked together at", "collaborated on", "met through",
+        "both contributed to", "were connected through"
+    ]
+
     if not scored:
-        # No findings yet - start broad
-        prompts.append(f"What is known about {topic} is that")
-        prompts.append(f"The most significant fact about {topic} involves")
-        prompts.append(f"Regarding {topic}, the key detail is")
+        # No findings yet - start broad with topic
+        prompts.append(f"{topic} was known for")
+        prompts.append(f"{topic} worked at")
+        prompts.append(f"The career of {topic} began when")
     else:
-        # Build from validated entities
+        # Build from validated entities with verb starters
         entities = [e for e, _, _ in scored[:5]]
 
-        # Single entity continuations
+        # Single entity continuations with verbs
         for entity, score, freq in scored[:3]:
-            prompts.append(
-                f"Regarding {topic}, the connection to {entity} involves"
-            )
+            verb = random.choice(entity_verbs)
+            prompts.append(f"{topic} {verb} {entity} when")
+            prompts.append(f"At {entity}, {topic}")
 
-        # Relationship-based continuations
-        for e1, e2, count in cooccurrences[:2]:
-            prompts.append(
-                f"The relationship between {e1} and {e2} in the context of {topic}"
-            )
+        # Relationship-based continuations with verbs
+        for e1, e2, cnt in cooccurrences[:2]:
+            verb = random.choice(relationship_verbs)
+            prompts.append(f"{e1} and {e2} {verb}")
+            prompts.append(f"The connection between {e1} and {e2} started when")
 
-        # Entity cluster continuation
-        if len(entities) >= 3:
-            entity_list = ", ".join(entities[:3])
-            prompts.append(
-                f"What connects {entity_list} in relation to {topic} is"
-            )
+        # Timeline/era continuations
+        for entity, score, freq in scored[:2]:
+            prompts.append(f"During the time at {entity}, {topic}")
+            prompts.append(f"Before {entity}, {topic} had")
 
+    random.shuffle(prompts)
     return prompts[:count]
 
 

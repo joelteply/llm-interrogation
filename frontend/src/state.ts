@@ -1,4 +1,4 @@
-import type { Project, ProbeResponse, Findings, GeneratedQuestion, TechniquePreset } from './types';
+import type { Project, ProbeResponse, Findings, GeneratedQuestion, TechniquePreset, EntityVerification } from './types';
 
 // Simple reactive state using custom events
 class State<T> {
@@ -73,12 +73,18 @@ export interface ProbeState {
   shouldAutostart: boolean;      // Auto-run probe when project loads
   autoCurate: boolean;           // Let AI clean up noise while running
   narrative: string;             // Interrogator's working theory
+  narrativeUpdated: number | null; // Timestamp of last narrative update
+  userNotes: string;             // User's personal notes/wild theories (fed back to AI)
+  narrativeHistory: string[];    // Past working theories (so AI doesn't lose context)
+  activeModel: string | null;    // Currently queried model (for highlighting)
+  currentQuestionIndex: number;  // Index of question being executed (-1 = none)
+  entityVerification: EntityVerification | null;  // PUBLIC vs PRIVATE entity verification
 }
 
 export const probeState = new State<ProbeState>({
   topic: '',
   angles: [],
-  selectedModels: ['groq/llama-3.1-8b-instant'],
+  selectedModels: [],  // Empty = auto-survey all models
   runsPerQuestion: 20,
   questionCount: 5,
   techniquePreset: 'balanced',
@@ -95,6 +101,12 @@ export const probeState = new State<ProbeState>({
   shouldAutostart: false,
   autoCurate: true,  // Default ON
   narrative: '',
+  narrativeUpdated: null,
+  userNotes: '',
+  narrativeHistory: [],
+  activeModel: null,
+  currentQuestionIndex: -1,
+  entityVerification: null,
 });
 
 // Ground truth state (hidden from probed models)

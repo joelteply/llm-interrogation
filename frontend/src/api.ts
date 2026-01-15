@@ -1,24 +1,21 @@
-import type { Project, ProbeConfig, Findings, SSEEvent } from './types';
+import type { Project, ProbeConfig, Findings, SSEEvent, ModelInfo, TechniqueListItem, TechniqueTemplate } from './types';
 
 const API_BASE = '/api';
 
-// Models
-export interface ModelConfig {
-  provider: string;
-  model: string;
-  env_key?: string;
-  temperature?: number;
-}
+// Models - fetched dynamically from API
+let _modelsCache: ModelInfo[] | null = null;
 
-export interface ModelsResponse {
-  default: string;
-  models: Record<string, ModelConfig>;
-}
-
-export async function getModels(): Promise<ModelsResponse> {
+export async function getAvailableModels(): Promise<ModelInfo[]> {
+  if (_modelsCache) return _modelsCache;
   const res = await fetch(`${API_BASE}/models`);
   if (!res.ok) throw new Error('Failed to fetch models');
-  return res.json();
+  _modelsCache = await res.json();
+  return _modelsCache!;
+}
+
+// Clear cache to refetch
+export function clearModelsCache() {
+  _modelsCache = null;
 }
 
 // Projects
@@ -65,6 +62,29 @@ export async function deleteProject(name: string): Promise<void> {
 export async function getFindings(projectName: string): Promise<Findings> {
   const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/findings`);
   if (!res.ok) throw new Error('Failed to fetch findings');
+  return res.json();
+}
+
+// Curate - AI restructures data: merges, relations, bans, theory
+export interface CurateResult {
+  ban: string[];
+  promote: string[];
+  merge: Array<{ canonical: string; aliases: string[] }>;
+  relations: Array<{ subject: string; predicate: string; object: string; confidence: number }>;
+  working_theory: string;
+  changes: { banned: number; merged: number; relations_added: number };
+}
+
+export async function curateProject(projectName: string): Promise<CurateResult> {
+  const res = await fetch(`${API_BASE}/auto-curate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: projectName }),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to curate');
+  }
   return res.json();
 }
 
@@ -269,4 +289,35 @@ export function drillCluster(
     });
 
   return controller;
+}
+
+// Technique Templates
+let _techniquesCache: TechniqueListItem[] | null = null;
+
+export async function getTechniques(): Promise<TechniqueListItem[]> {
+  if (_techniquesCache) return _techniquesCache;
+  const res = await fetch(`${API_BASE}/techniques`);
+  if (!res.ok) throw new Error('Failed to fetch techniques');
+  _techniquesCache = await res.json();
+  return _techniquesCache!;
+}
+
+export async function getTechnique(id: string): Promise<TechniqueTemplate> {
+  const res = await fetch(`${API_BASE}/techniques/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error('Technique not found');
+  return res.json();
+}
+
+export async function saveTechnique(id: string, template: TechniqueTemplate): Promise<void> {
+  const res = await fetch(`${API_BASE}/techniques/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(template),
+  });
+  if (!res.ok) throw new Error('Failed to save technique');
+  _techniquesCache = null; // Clear cache
+}
+
+export function clearTechniquesCache() {
+  _techniquesCache = null;
 }

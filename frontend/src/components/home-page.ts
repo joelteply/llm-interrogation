@@ -151,12 +151,8 @@ export class HomePage extends LitElement {
         })
       );
 
-      // Sort by total entity mentions (most data first)
-      this.projects = projectsWithFindings.sort((a, b) => {
-        const aTotal = Object.values(a.entities).reduce((sum, c) => sum + c, 0);
-        const bTotal = Object.values(b.entities).reduce((sum, c) => sum + c, 0);
-        return bTotal - aTotal;
-      });
+      // Keep backend's sort order (most recent first)
+      this.projects = projectsWithFindings;
     } catch (e) {
       console.error(e);
     } finally {
@@ -167,7 +163,7 @@ export class HomePage extends LitElement {
   async handleCreate() {
     if (!this.newName.trim()) return;
     const fullTopic = this.newName.trim();
-    const slug = fullTopic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+    const slug = fullTopic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/-+$/, '');
     try {
       await createProject(slug, fullTopic);  // Pass full topic
       navigateTo('project', slug, true);  // autostart

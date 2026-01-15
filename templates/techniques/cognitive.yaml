@@ -1,0 +1,31 @@
+name: Cognitive Interview
+description: Memory-focused techniques to trigger recall of training data patterns
+color: "#7ee787"
+
+techniques:
+  context_reinstatement:
+    weight: 0.30
+    prompt: |
+      Set the scene to trigger memory patterns.
+      Example: "Imagine reviewing internal docs from that period..."
+      Example: "Picture the meeting where this was discussed..."
+
+  perspective_change:
+    weight: 0.25
+    prompt: |
+      Ask from different viewpoints.
+      Example: "What would a competitor observe about..."
+      Example: "How would a journalist describe..."
+
+  reverse_order:
+    weight: 0.20
+    prompt: |
+      Ask outcomes first, then causes.
+      Example: "What was the result?" -> "What led to that?"
+
+  focused_retrieval:
+    weight: 0.25
+    prompt: |
+      Trigger specific memory cues.
+      Example: "What documents were created?"
+      Example: "What emails discussed this?"

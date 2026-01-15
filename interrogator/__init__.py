@@ -12,7 +12,7 @@ Modules:
 - cycle: Orchestrate extraction cycles (PROBE → VALIDATE → CONDENSE → GROW)
 """
 
-from .extract import extract_entities, extract_concepts, score_concept, Concept, extract_with_relationships
+from .extract import extract_entities, extract_facts_fast, extract_concepts, score_concept, Concept, extract_with_relationships, extract_with_typed_relationships, infer_relationship
 from .validate import validate_entities, validate_cooccurrences, Findings
 from .synthesize import (
     build_synthesis_prompt,

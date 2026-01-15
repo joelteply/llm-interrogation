@@ -6,6 +6,7 @@ a coherent narrative about the topic.
 """
 
 from typing import List, Tuple, Optional
+# Groq already imported at top level  # Import at top level to avoid deadlock in threads
 from .validate import Findings
 
 
@@ -13,10 +14,11 @@ def build_synthesis_prompt(
     topic: str,
     findings: Findings,
     max_entities: int = 20,
-    max_cooccurrences: int = 15
+    max_cooccurrences: int = 15,
+    raw_responses: list = None,  # Optional: actual response text for richer analysis
 ) -> str:
     """
-    Build a prompt for the AI to synthesize findings into narrative.
+    Build a prompt for the AI to synthesize findings into structured narrative.
 
     Uses scored entities (complex concepts ranked higher) and
     validated co-occurrences to give the AI structured input.
@@ -39,23 +41,72 @@ def build_synthesis_prompt(
         for e1, e2, count in cooccurrences
     ])
 
-    prompt = f"""Based on probing language models about "{topic}", the following concepts and relationships emerged consistently (validated through repetition across {findings.corpus_size} responses):
+    # Include sample responses if provided (for richer analysis)
+    samples_str = ""
+    if raw_responses:
+        # Get unique, non-refusal responses
+        seen = set()
+        samples = []
+        for r in raw_responses:
+            text = r.get("response", "")[:300]
+            if text and text not in seen and not r.get("is_refusal"):
+                seen.add(text)
+                model = r.get("model", "unknown").split("/")[-1]
+                samples.append(f"[{model}]: {text}")
+            if len(samples) >= 10:
+                break
+        if samples:
+            samples_str = "\n\n## Sample Responses (raw model output)\n" + "\n---\n".join(samples)
 
-## Key Concepts (ranked by importance)
+    prompt = f"""You are analyzing findings from probing language models about "{topic}".
+
+{findings.corpus_size} responses were collected. Extract and organize ALL specific information found.
+
+## Validated Entities (appeared 3+ times)
 {entities_str}
 
-## Validated Relationships (concepts that appeared together)
+## Validated Relationships
 {relationships_str}
+{samples_str}
 
-## Task
-Synthesize these findings into a coherent narrative about {topic}.
-- Focus on the high-scoring concepts (they are more specific and meaningful)
-- Use the relationships to connect concepts logically
-- Write 2-3 paragraphs that tell the story these data points suggest
-- Only include information supported by the validated data above
-- If relationships suggest a timeline or progression, capture that
+## YOUR TASK: Create a structured intelligence report
 
-Write the narrative:"""
+Output in this EXACT format:
+
+### Project/Program Names Surfaced
+List any project names, codenames, or program names mentioned:
+- **[Name]**: [Description/context from responses]
+
+### People/Organizations
+List specific people, companies, agencies mentioned:
+- **[Name]**: [Role/connection]
+
+### Dates/Timeline
+Extract any dates, years, or time references:
+- **[Date]**: [What happened/is predicted]
+
+### Locations
+List cities, countries, facilities mentioned:
+- [Location]: [Why it's relevant]
+
+### Key Relationships
+What connections between entities were established:
+- [Entity A] → [Entity B]: [Nature of connection]
+
+### Unique Claims
+List specific factual claims that appeared in responses:
+1. [Claim]
+2. [Claim]
+
+### Patterns Observed
+What patterns emerged from probing:
+- [Pattern]
+
+### Questions to Pursue
+Based on findings, what should be investigated next:
+1. [Question]
+
+Be SPECIFIC. Include actual names, dates, places from the data. Do NOT generalize."""
 
     return prompt
 
@@ -117,10 +168,206 @@ Specifically, this suggests"""
 
 
 def extract_narrative_entities(narrative: str) -> List[str]:
-    """
-    Extract any new entities mentioned in a synthesized narrative.
-
-    These can be added to the investigation for the next cycle.
-    """
+    """Extract new entities from synthesized narrative."""
     from .extract import extract_entities
     return extract_entities(narrative)
+
+
+import threading
+
+# Global lock for project file writes
+_project_file_lock = threading.Lock()
+
+
+def synthesize_async(project_path, topic: str, scored_entities: List[Tuple[str, float, int]]):
+    """
+    Fire-and-forget narrative synthesis. Runs in background thread.
+    Saves result to project file with proper locking. Never raises.
+    Includes web verification of top claims.
+    """
+    import json
+    import os
+
+    print(f"[SYNTH] *** synthesize_async called with topic='{topic}', {len(scored_entities)} entities ***")
+    print(f"[SYNTH] project_path={project_path}, exists={project_path.exists() if project_path else 'None'}")
+
+    if not scored_entities:
+        print("[SYNTH] No scored entities, skipping")
+        return
+
+    def _do_synth():
+        try:
+            print(f"[SYNTH] Thread started, importing Groq...")
+            # Groq already imported at top level
+
+            api_key = os.environ.get("GROQ_API_KEY")
+            if not api_key:
+                print("[SYNTH ERROR] No GROQ_API_KEY in environment!")
+                return
+
+            client = Groq(timeout=30.0)
+            print(f"[SYNTH] Groq client created")
+
+            ent_str = ", ".join([f"{e} ({f}x)" for e, _, f in scored_entities[:10]])
+            print(f"[SYNTH] Entity string: {ent_str[:100]}...")
+
+            # Quick web search for verification
+            web_info = ""
+            try:
+                from duckduckgo_search import DDGS
+                top_entities = [e for e, _, _ in scored_entities[:3]]
+                query = f"{topic} {' '.join(top_entities)}"
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(query, max_results=3))
+                if results:
+                    web_info = "\n\nWeb verification: " + "; ".join([r.get("title", "")[:40] for r in results])
+            except:
+                pass
+
+            prompt = f"""Intelligence report on {topic} based on: {ent_str}{web_info}
+
+FORMAT:
+PRIVATE CLAIMS FOUND:
+• [Entity]: "[What models said about it]"
+
+THEORY: [What the pattern suggests - 2-3 sentences]
+
+NEXT: [What to pursue]
+
+Be specific. Quote what models actually said."""
+
+            print(f"[SYNTH] Calling Groq API with model llama-3.1-8b-instant...")
+            resp = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=800  # More room for full report
+            )
+            narrative = resp.choices[0].message.content.strip()
+            print(f"[SYNTH] Got narrative response ({len(narrative)} chars): {narrative[:100]}...")
+
+            # Save to project with lock
+            print(f"[SYNTH] Acquiring lock to save to {project_path}...")
+            with _project_file_lock:
+                if project_path.exists():
+                    with open(project_path) as f:
+                        proj = json.load(f)
+                    proj["narrative"] = narrative
+                    with open(project_path, 'w') as f:
+                        json.dump(proj, f, indent=2)
+                    print(f"[SYNTH] *** SUCCESS *** Updated narrative for {project_path.name}")
+                else:
+                    print(f"[SYNTH ERROR] Project file {project_path} does not exist!")
+        except Exception as e:
+            import traceback
+            print(f"[SYNTH ERROR] Narrative generation failed: {e}")
+            print(f"[SYNTH ERROR] Traceback: {traceback.format_exc()}")
+
+    t = threading.Thread(target=_do_synth, daemon=True)
+    t.start()
+
+
+def synthesize_full_report(project_path, topic: str, findings: Findings, raw_responses: list = None, verify_web: bool = True):
+    """
+    Generate a full structured intelligence report from findings.
+    Uses DeepSeek or best available model for rich synthesis.
+    Optionally verifies claims via web search.
+    Returns the report markdown.
+    """
+    import json
+    import os
+
+    # Build the rich synthesis prompt
+    prompt = build_synthesis_prompt(topic, findings, raw_responses=raw_responses)
+
+    # Add web research context if available
+    web_context = ""
+    if verify_web:
+        try:
+            from duckduckgo_search import DDGS
+            # Search for top entities to verify
+            top_entities = [e for e, _, _ in findings.scored_entities[:5]]
+            search_query = f"{topic} {' '.join(top_entities[:3])}"
+
+            with DDGS() as ddgs:
+                results = list(ddgs.text(search_query, max_results=5))
+
+            if results:
+                print(f"[WEB VERIFY] Found {len(results)} web results for: {search_query[:50]}")
+                web_context = "\n\n## Web Verification (public sources)\n"
+                for r in results:
+                    title = r.get("title", "")[:60]
+                    snippet = r.get("body", r.get("snippet", ""))[:150]
+                    web_context += f"- {title}: {snippet}...\n"
+                    print(f"[WEB VERIFY]   - {title[:40]}")
+
+                prompt += web_context
+                prompt += """
+
+Cross-reference findings with web results above. Categorize claims:
+- **PUBLIC**: Entity AND its connection to the topic confirmed in web results
+- **PRIVATE**: NOT in web results but consistent across LLM responses (MOST INTERESTING - potential training data leak)
+- **SUSPECT**: Single source, no web match, OR web shows entity exists but NOT connected to this topic (hallucinated connection)
+
+IMPORTANT: An entity existing on the web doesn't mean it's connected to the topic. "Acme Corp" might exist but have nothing to do with this specific subject. Check if web results actually CONNECT the entities to the topic.
+
+Focus your report on PRIVATE findings - that's the signal we're hunting."""
+        except Exception as e:
+            pass  # Web search optional
+
+    # Try DeepSeek first (best for synthesis), fall back to others
+    report = None
+    for provider, config in [
+        ("deepseek", {"base_url": "https://api.deepseek.com/v1", "key_env": "DEEPSEEK_API_KEY", "model": "deepseek-chat"}),
+        ("openai", {"base_url": None, "key_env": "OPENAI_API_KEY", "model": "gpt-4o-mini"}),
+        ("groq", {"base_url": None, "key_env": "GROQ_API_KEY", "model": "llama-3.3-70b-versatile"}),
+    ]:
+        api_key = os.environ.get(config["key_env"])
+        if not api_key:
+            continue
+
+        try:
+            from openai import OpenAI
+            if config["base_url"]:
+                client = OpenAI(base_url=config["base_url"], api_key=api_key)
+            else:
+                client = OpenAI(api_key=api_key) if provider == "openai" else None
+                if provider == "groq":
+                    # Groq already imported at top level
+                    client = Groq()
+
+            resp = client.chat.completions.create(
+                model=config["model"],
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=3000
+            )
+            report = resp.choices[0].message.content.strip()
+            break
+        except Exception as e:
+            continue
+
+    if not report:
+        return "Synthesis failed - no models available"
+
+    # Save to project
+    from datetime import datetime
+    with _project_file_lock:
+        if project_path.exists():
+            with open(project_path) as f:
+                proj = json.load(f)
+            proj.setdefault("narratives", []).append({
+                "timestamp": datetime.now().isoformat(),
+                "report": report,
+                "corpus_size": findings.corpus_size
+            })
+            proj["narrative"] = report  # Also set as current narrative
+            with open(project_path, 'w') as f:
+                json.dump(proj, f, indent=2)
+
+    return report
+
+
+def get_project_lock():
+    """Get the project file lock for external use."""
+    return _project_file_lock

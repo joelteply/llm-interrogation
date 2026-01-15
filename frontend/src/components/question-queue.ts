@@ -62,52 +62,110 @@ export class QuestionQueue extends LitElement {
 
     .question-item {
       display: flex;
-      gap: 12px;
+      flex-direction: column;
+      gap: 8px;
       padding: 12px;
       background: var(--bg-primary, #0d1117);
       border: 1px solid var(--border-muted, #21262d);
-      border-radius: 6px;
+      border-radius: 8px;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+
+    .question-item:hover {
+      border-color: var(--border-default, #30363d);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .question-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border-muted, #21262d);
+      margin-bottom: 2px;
+    }
+
+    .question-item.active {
+      border-color: var(--accent-blue, #58a6ff);
+      background: rgba(88, 166, 255, 0.08);
+    }
+
+    .question-item.completed {
+      opacity: 0.6;
+    }
+
+    .active-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--accent-blue, #58a6ff);
+      margin-top: 6px;
+    }
+
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-blue, #58a6ff);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.2); }
     }
 
     .question-index {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 24px;
-      height: 24px;
+      width: 20px;
+      height: 20px;
       background: var(--bg-tertiary, #21262d);
       border-radius: 50%;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       color: var(--text-secondary, #8b949e);
       flex-shrink: 0;
     }
 
-    .question-content {
-      flex: 1;
-      min-width: 0;
-    }
-
     .question-text {
       font-size: 13px;
       color: var(--text-primary, #c9d1d9);
-      margin-bottom: 6px;
-      line-height: 1.4;
+      line-height: 1.45;
     }
 
     .question-meta {
       display: flex;
       align-items: center;
-      gap: 8px;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding-top: 4px;
+      opacity: 0.8;
+    }
+
+    .template-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .technique-tag {
       display: inline-flex;
       align-items: center;
-      padding: 2px 8px;
+      padding: 1px 6px;
       background: var(--bg-tertiary, #21262d);
       border-radius: 9999px;
-      font-size: 10px;
+      font-size: 9px;
       color: var(--text-muted, #6e7681);
     }
 
@@ -133,31 +191,40 @@ export class QuestionQueue extends LitElement {
 
     .question-actions {
       display: flex;
-      gap: 4px;
-      flex-shrink: 0;
+      gap: 2px;
+      margin-left: auto;
     }
 
     .action-btn {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 24px;
-      height: 24px;
-      background: none;
+      width: 22px;
+      height: 22px;
+      background: var(--bg-tertiary, #21262d);
       border: none;
       border-radius: 4px;
       color: var(--text-muted, #6e7681);
       cursor: pointer;
-      font-size: 14px;
+      font-size: 12px;
+      transition: all 0.15s;
     }
 
     .action-btn:hover {
-      background: var(--bg-tertiary, #21262d);
-      color: var(--text-secondary, #8b949e);
+      background: var(--border-default, #30363d);
+      color: var(--text-primary, #c9d1d9);
     }
 
     .action-btn.delete:hover {
       color: var(--accent-red, #f85149);
+    }
+
+    .action-btn.skip {
+      color: var(--accent-yellow, #d29922);
+    }
+
+    .action-btn.skip:hover {
+      background: rgba(210, 153, 34, 0.15);
     }
 
     .add-question {
@@ -211,6 +278,7 @@ export class QuestionQueue extends LitElement {
     super.connectedCallback();
     this._unsubscribe = probeState.subscribe((s) => {
       this._probeState = s;
+      this.requestUpdate();  // Force re-render when questions arrive
     });
   }
 
@@ -219,15 +287,33 @@ export class QuestionQueue extends LitElement {
     this._unsubscribe?.();
   }
 
-  private getTechniqueClass(technique: string): string {
+  private getTechniqueClass(technique?: string): string {
+    if (!technique) return '';
     if (technique.startsWith('scharff')) return 'scharff';
     if (technique.startsWith('fbi')) return 'fbi';
     if (technique.startsWith('cognitive')) return 'cognitive';
     return '';
   }
 
-  private getTechniqueName(technique: string): string {
+  private getTechniqueName(technique?: string): string {
+    if (!technique) return 'unknown';
     return TECHNIQUE_INFO[technique as keyof typeof TECHNIQUE_INFO]?.name || technique;
+  }
+
+  private getModelShortName(model: string): string {
+    // "groq/llama-3.1-8b-instant" -> "llama-3.1-8b"
+    const parts = model.split('/');
+    const name = parts[parts.length - 1];
+    return name.replace('-instant', '').split('-').slice(0, 3).join('-');
+  }
+
+  private getTemplateBadgeStyle(color?: string): string {
+    const c = color || '#8b949e';
+    // Convert hex to rgba for background
+    const r = parseInt(c.slice(1, 3), 16);
+    const g = parseInt(c.slice(3, 5), 16);
+    const b = parseInt(c.slice(5, 7), 16);
+    return `background: rgba(${r}, ${g}, ${b}, 0.15); border: 1px solid rgba(${r}, ${g}, ${b}, 0.3); color: ${c};`;
   }
 
   private removeQuestion(index: number) {
@@ -235,6 +321,23 @@ export class QuestionQueue extends LitElement {
       ...s,
       questions: s.questions.filter((_, i) => i !== index),
     }));
+  }
+
+  private moveQuestion(from: number, to: number) {
+    probeState.update((s) => {
+      const questions = [...s.questions];
+      const [moved] = questions.splice(from, 1);
+      questions.splice(to, 0, moved);
+      return { ...s, questions };
+    });
+  }
+
+  private skipCurrent() {
+    // Move current question to end of queue
+    const { currentQuestionIndex, questions } = this._probeState;
+    if (currentQuestionIndex >= 0 && currentQuestionIndex < questions.length) {
+      this.moveQuestion(currentQuestionIndex, questions.length - 1);
+    }
   }
 
   private addQuestion() {
@@ -260,7 +363,7 @@ export class QuestionQueue extends LitElement {
   }
 
   render() {
-    const { questions, isRunning } = this._probeState;
+    const { questions, isRunning, currentQuestionIndex, activeModel } = this._probeState;
 
     if (questions.length === 0 && !isRunning) {
       return html`
@@ -287,11 +390,15 @@ export class QuestionQueue extends LitElement {
       `;
     }
 
+    // Calculate pending count for header
+    const pendingCount = questions.length - Math.max(0, currentQuestionIndex);
+    const doneCount = Math.max(0, currentQuestionIndex);
+
     return html`
       <div class="card">
         <div class="header">
           <h3>Question Queue</h3>
-          <span class="count">${questions.length} questions</span>
+          <span class="count">${pendingCount} pending${doneCount > 0 ? ` · ${doneCount} done` : ''}</span>
         </div>
 
         <div class="add-question">
@@ -307,11 +414,50 @@ export class QuestionQueue extends LitElement {
         </div>
 
         <div class="questions">
-          ${questions.map(
-            (q, i) => html`
-              <div class="question-item">
-                <span class="question-index">${i + 1}</span>
-                <div class="question-content">
+          ${(() => {
+            // QUEUE BEHAVIOR: Only show current + pending questions
+            // Completed questions disappear from view
+            const startIdx = Math.max(0, currentQuestionIndex);
+            const pendingQs = questions.slice(startIdx);
+            const doneCount = startIdx;
+
+            if (pendingQs.length === 0 && doneCount > 0) {
+              return html`<div class="empty">All ${doneCount} questions completed</div>`;
+            }
+
+            return pendingQs.map((q, i) => {
+              const realIdx = startIdx + i;
+              const isActive = realIdx === currentQuestionIndex;
+              return html`
+                <div class="question-item ${isActive ? 'active' : ''}">
+                  <div class="question-header">
+                    <span class="question-index">${i + 1}</span>
+                    ${q.template ? html`
+                      <span class="template-badge" style=${this.getTemplateBadgeStyle(q.color)}>
+                        ${q.template}
+                      </span>
+                    ` : null}
+                    <div class="question-actions">
+                      ${!isRunning ? html`
+                        <button
+                          class="action-btn"
+                          @click=${() => this.moveQuestion(realIdx, startIdx)}
+                          title="Run next"
+                        >↑</button>
+                        <button
+                          class="action-btn delete"
+                          @click=${() => this.removeQuestion(realIdx)}
+                          title="Remove"
+                        >&times;</button>
+                      ` : isActive ? html`
+                        <button
+                          class="action-btn skip"
+                          @click=${() => this.skipCurrent()}
+                          title="Skip"
+                        >⏭</button>
+                      ` : null}
+                    </div>
+                  </div>
                   <div class="question-text">${q.question}</div>
                   <div class="question-meta">
                     <span class="technique-tag ${this.getTechniqueClass(q.technique)}">
@@ -321,23 +467,16 @@ export class QuestionQueue extends LitElement {
                       ? html`<span class="target-entity">→ ${q.target_entity}</span>`
                       : null}
                   </div>
+                  ${isActive && activeModel ? html`
+                    <div class="active-indicator">
+                      <span class="pulse"></span>
+                      Asking ${this.getModelShortName(activeModel)}...
+                    </div>
+                  ` : null}
                 </div>
-                ${!isRunning
-                  ? html`
-                      <div class="question-actions">
-                        <button
-                          class="action-btn delete"
-                          @click=${() => this.removeQuestion(i)}
-                          title="Remove question"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                    `
-                  : null}
-              </div>
-            `
-          )}
+              `;
+            });
+          })()}
         </div>
       </div>
     `;

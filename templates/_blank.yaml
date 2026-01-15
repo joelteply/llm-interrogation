@@ -4,7 +4,7 @@
 name: "My Investigation"
 description: "What are you investigating?"
 created: "2026-01-XX"
-author: "Your Name"
+author: "Anonymous"
 
 # Model configuration (these defaults work well)
 model:

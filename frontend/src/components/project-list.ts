@@ -368,7 +368,7 @@ export class ProjectList extends LitElement {
 
   @state() private topic = '';
   @state() private angles = '';
-  @state() private selectedModels: string[] = ['groq/llama-3.1-8b-instant'];
+  @state() private selectedModels: string[] = [];  // Empty = auto-survey all
   @state() private runs = 10;
   @state() private questions = 3;
   @state() private isRunning = false;
@@ -402,11 +402,12 @@ export class ProjectList extends LitElement {
   }
 
   async runProbe() {
-    if (!this.topic.trim() || this.selectedModels.length === 0) return;
+    if (!this.topic.trim()) return;
+    // Empty models = auto-survey all available models
 
     // Create project if needed
     if (this.projectName === 'default') {
-      const slug = this.topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
+      const slug = this.topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30).replace(/-+$/, '');
       try {
         await createProject(slug);
         this.projectName = slug;
@@ -494,7 +495,7 @@ export class ProjectList extends LitElement {
             <div class="field">
               <label>Target / Topic</label>
               <textarea
-                placeholder="Who or what to investigate (e.g., 'Joel Teply software engineer Kansas')"
+                placeholder="Who or what to investigate (e.g., 'Enron executive compensation 2001')"
                 .value=${this.topic}
                 @input=${(e: Event) => this.topic = (e.target as HTMLTextAreaElement).value}
               ></textarea>
@@ -556,7 +557,7 @@ export class ProjectList extends LitElement {
             <button
               class="run-btn ${this.isRunning ? 'running' : ''}"
               @click=${this.isRunning ? () => this.stopProbe() : () => this.runProbe()}
-              ?disabled=${!this.topic.trim() || this.selectedModels.length === 0}
+              ?disabled=${!this.topic.trim()}
             >
               ${this.isRunning ? 'STOP' : 'RUN INTERROGATION'}
             </button>

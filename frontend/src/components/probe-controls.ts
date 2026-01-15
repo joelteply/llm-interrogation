@@ -1,8 +1,8 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { probeState, groundTruthState, type ProbeState } from '../state';
-import { startProbe, updateProject, generateQuestions, clusterEntities, drillCluster, type ClusterResult } from '../api';
-import { AVAILABLE_MODELS, type TechniquePreset, type SSEEvent, type GeneratedQuestion } from '../types';
+import { startProbe, updateProject, generateQuestions, clusterEntities, drillCluster, getAvailableModels, getTechniques, type ClusterResult } from '../api';
+import { type TechniquePreset, type SSEEvent, type GeneratedQuestion, type ModelInfo, type TechniqueListItem } from '../types';
 
 @customElement('probe-controls')
 export class ProbeControls extends LitElement {
@@ -60,10 +60,39 @@ export class ProbeControls extends LitElement {
       min-height: 60px;
     }
 
+    .label-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .label-row label {
+      margin-bottom: 0;
+    }
+
+    .label-row button {
+      font-size: 11px;
+      padding: 2px 8px;
+      background: var(--bg-tertiary, #21262d);
+      border: 1px solid var(--border-default, #30363d);
+      border-radius: 4px;
+      color: var(--text-secondary, #8b949e);
+      cursor: pointer;
+    }
+
+    .label-row button:hover {
+      background: var(--accent-blue, #58a6ff);
+      color: white;
+      border-color: var(--accent-blue, #58a6ff);
+    }
+
     .models {
       display: flex;
       flex-direction: column;
       gap: 8px;
+      max-height: 200px;
+      overflow-y: auto;
     }
 
     .model-option {
@@ -136,31 +165,54 @@ export class ProbeControls extends LitElement {
       font-size: 14px;
     }
 
-    .technique-preset {
+    .technique-select {
       display: flex;
+      flex-direction: column;
       gap: 8px;
     }
 
-    .technique-preset button {
-      flex: 1;
-      padding: 8px;
-      background: var(--bg-tertiary, #21262d);
+    .technique-select select {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg-primary, #0d1117);
       border: 1px solid var(--border-default, #30363d);
       border-radius: 6px;
-      color: var(--text-secondary, #8b949e);
-      font-size: 12px;
+      color: var(--text-primary, #c9d1d9);
+      font-size: 14px;
       cursor: pointer;
-      transition: all 150ms ease;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%238b949e' viewBox='0 0 16 16'%3E%3Cpath d='M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 16px;
+      padding-right: 36px;
     }
 
-    .technique-preset button:hover {
-      border-color: var(--text-muted, #6e7681);
-    }
-
-    .technique-preset button.active {
-      background: var(--accent-blue, #58a6ff);
+    .technique-select select:focus {
+      outline: none;
       border-color: var(--accent-blue, #58a6ff);
-      color: white;
+    }
+
+    .technique-select select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .technique-description {
+      font-size: 11px;
+      color: var(--text-muted, #6e7681);
+      font-style: italic;
+    }
+
+    .technique-link {
+      font-size: 11px;
+      color: var(--accent-blue, #58a6ff);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .technique-link:hover {
+      text-decoration: underline;
     }
 
     .actions {
@@ -341,6 +393,15 @@ export class ProbeControls extends LitElement {
   private optimalK: number | null = null;
 
   @state()
+  private availableModels: ModelInfo[] = [];
+
+  @state()
+  private availableTechniques: TechniqueListItem[] = [];
+
+  @state()
+  private selectedTechnique: string = 'auto';  // 'auto' or technique id
+
+  @state()
   private silhouetteScore: number | null = null;
 
   @state()
@@ -350,6 +411,18 @@ export class ProbeControls extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    // Fetch available models from API (not hardcoded)
+    getAvailableModels().then(models => {
+      this.availableModels = models;
+    }).catch(err => {
+      console.error('Failed to fetch models:', err);
+    });
+    // Fetch available technique templates
+    getTechniques().then(techniques => {
+      this.availableTechniques = techniques;
+    }).catch(err => {
+      console.error('Failed to fetch techniques:', err);
+    });
     this._unsubscribes.push(
       probeState.subscribe((s) => {
         this._probeState = s;
@@ -383,7 +456,30 @@ export class ProbeControls extends LitElement {
       const selected = s.selectedModels.includes(modelId)
         ? s.selectedModels.filter((m) => m !== modelId)
         : [...s.selectedModels, modelId];
+      // Save to project so hot-reload picks up mid-run additions
+      if (this.projectName) {
+        updateProject(this.projectName, { selected_models: selected });
+      }
       return { ...s, selectedModels: selected };
+    });
+  }
+
+  private selectAllModels() {
+    const allModelIds = this.availableModels.map((m) => m.id);
+    probeState.update((s) => {
+      if (this.projectName) {
+        updateProject(this.projectName, { selected_models: allModelIds });
+      }
+      return { ...s, selectedModels: allModelIds };
+    });
+  }
+
+  private clearAllModels() {
+    probeState.update((s) => {
+      if (this.projectName) {
+        updateProject(this.projectName, { selected_models: [] });
+      }
+      return { ...s, selectedModels: [] };
     });
   }
 
@@ -433,7 +529,8 @@ export class ProbeControls extends LitElement {
 
   private handleRun() {
     if (!this.projectName || !this._probeState.topic.trim()) return;
-    if (this._probeState.selectedModels.length === 0) return;
+    // Empty models = auto-survey all available models
+    // if (this._probeState.selectedModels.length === 0) return;
 
     // Save project state
     updateProject(this.projectName, {
@@ -449,7 +546,7 @@ export class ProbeControls extends LitElement {
         angles: this._probeState.angles,
         models: this._probeState.selectedModels,
         questions: this._probeState.questions.length
-          ? this._probeState.questions.map((q) => q.question)
+          ? this._probeState.questions  // Full objects with technique preserved
           : Array(this._probeState.questionCount).fill(null),
         runs_per_question: this._probeState.runsPerQuestion,
         questions_count: this._probeState.questionCount,
@@ -486,6 +583,20 @@ export class ProbeControls extends LitElement {
           questions: event.data as GeneratedQuestion[],
         }));
         break;
+      case 'run_start':
+        // Starting to execute a question - track the index
+        probeState.update((s) => ({
+          ...s,
+          currentQuestionIndex: (event.data as any).question_index ?? -1,
+        }));
+        break;
+      case 'model_active':
+        // Currently querying this model
+        probeState.update((s) => ({
+          ...s,
+          activeModel: (event.data as any).model ?? null,
+        }));
+        break;
       case 'response':
         probeState.update((s) => ({
           ...s,
@@ -503,6 +614,8 @@ export class ProbeControls extends LitElement {
           ...s,
           isRunning: false,
           abortController: null,
+          currentQuestionIndex: -1,
+          activeModel: null,
         }));
         // Auto-continue if in infinite mode
         if (this._probeState.infiniteMode) {
@@ -515,6 +628,8 @@ export class ProbeControls extends LitElement {
           ...s,
           isRunning: false,
           abortController: null,
+          currentQuestionIndex: -1,
+          activeModel: null,
         }));
         break;
     }
@@ -528,6 +643,8 @@ export class ProbeControls extends LitElement {
         ...s,
         isRunning: false,
         abortController: null,
+        currentQuestionIndex: -1,
+        activeModel: null,
       }));
     }
   }
@@ -581,7 +698,8 @@ export class ProbeControls extends LitElement {
     const { topic, angles, selectedModels, runsPerQuestion, questionCount, techniquePreset, isRunning } =
       this._probeState;
 
-    const canRun = topic.trim() && selectedModels.length > 0 && !isRunning;
+    // Allow running with 0 models = auto-survey
+    const canRun = topic.trim() && !isRunning;
 
     return html`
       <div class="card">
@@ -590,7 +708,7 @@ export class ProbeControls extends LitElement {
         <div class="field">
           <label>Topic / Target</label>
           <textarea
-            placeholder="e.g., Joel Teply software developer Kansas"
+            placeholder="e.g., Theranos board members 2015"
             .value=${topic}
             @input=${this.updateTopic}
             ?disabled=${isRunning}
@@ -607,16 +725,19 @@ export class ProbeControls extends LitElement {
         </div>
 
         <div class="field">
-          <label>Models</label>
+          <div class="label-row">
+            <label>Models</label>
+            <button @click=${this.selectAllModels} title="Select all models">All</button>
+            <button @click=${this.clearAllModels} title="Clear selection">Clear</button>
+          </div>
           <div class="models">
-            ${AVAILABLE_MODELS.map(
+            ${this.availableModels.map(
               (model) => html`
                 <label class="model-option">
                   <input
                     type="checkbox"
                     .checked=${selectedModels.includes(model.id)}
                     @change=${() => this.toggleModel(model.id)}
-                    ?disabled=${isRunning}
                   />
                   <span>${model.name}</span>
                   <span class="provider">(${model.provider})</span>
@@ -665,29 +786,29 @@ export class ProbeControls extends LitElement {
         </div>
 
         <div class="field">
-          <label>Technique Preset</label>
-          <div class="technique-preset">
-            <button
-              class=${techniquePreset === 'subtle' ? 'active' : ''}
-              @click=${() => this.setTechniquePreset('subtle')}
+          <label>Interrogation Strategy</label>
+          <div class="technique-select">
+            <select
+              .value=${this.selectedTechnique}
+              @change=${(e: Event) => this.selectedTechnique = (e.target as HTMLSelectElement).value}
               ?disabled=${isRunning}
             >
-              Subtle
-            </button>
-            <button
-              class=${techniquePreset === 'balanced' ? 'active' : ''}
-              @click=${() => this.setTechniquePreset('balanced')}
-              ?disabled=${isRunning}
-            >
-              Balanced
-            </button>
-            <button
-              class=${techniquePreset === 'aggressive' ? 'active' : ''}
-              @click=${() => this.setTechniquePreset('aggressive')}
-              ?disabled=${isRunning}
-            >
-              Aggressive
-            </button>
+              <option value="auto">Auto (Random Mix)</option>
+              <optgroup label="Templates">
+                ${this.availableTechniques.map(t => html`
+                  <option value=${t.id}>${t.name}</option>
+                `)}
+              </optgroup>
+            </select>
+            ${this.selectedTechnique !== 'auto' ? html`
+              <span class="technique-description">
+                ${this.availableTechniques.find(t => t.id === this.selectedTechnique)?.description || ''}
+              </span>
+            ` : html`
+              <span class="technique-description">
+                Randomly picks from all techniques each round
+              </span>
+            `}
           </div>
         </div>
 
@@ -718,7 +839,7 @@ export class ProbeControls extends LitElement {
         ${!isRunning && !canRun ? html`
           <div class="action-hint">
             ${!topic.trim() ? 'Enter a topic above to start probing' : ''}
-            ${topic.trim() && selectedModels.length === 0 ? 'Select at least one model' : ''}
+            ${topic.trim() && selectedModels.length === 0 ? '(will auto-survey all models)' : ''}
           </div>
         ` : null}
 

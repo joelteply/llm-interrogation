@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import type { EntityMatch } from '../types';
 
 interface WordItem {
   text: string;
@@ -131,6 +132,24 @@ export class WordCloud extends LitElement {
       color: var(--text-muted, #6e7681);
     }
 
+    .count-link {
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+    }
+
+    .count-link:hover {
+      text-decoration-style: solid;
+    }
+
+    .count-link.promoted {
+      color: #3fb950;
+    }
+
+    .count-link.banned {
+      color: #f85149;
+    }
+
     .legend {
       display: flex;
       gap: 12px;
@@ -185,10 +204,96 @@ export class WordCloud extends LitElement {
       color: var(--text-secondary, #8b949e);
       font-size: 14px;
     }
+
+    .hover-popup {
+      position: fixed;
+      background: #1c2128;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 0;
+      max-width: 400px;
+      max-height: 300px;
+      z-index: 1000;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hover-popup-content {
+      padding: 12px;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .hover-popup-title {
+      font-weight: 600;
+      color: #58a6ff;
+      padding: 10px 12px;
+      border-bottom: 1px solid #30363d;
+      background: #1c2128;
+      position: sticky;
+      top: 0;
+      flex-shrink: 0;
+    }
+
+    .hover-match {
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #21262d;
+    }
+
+    .hover-match:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+
+    .hover-match-header {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .hover-match-num {
+      color: #6e7681;
+      font-weight: 600;
+    }
+
+    .hover-match-model {
+      color: #7ee787;
+      font-weight: 500;
+    }
+
+    .hover-match-question {
+      color: #8b949e;
+      font-style: italic;
+      margin-bottom: 4px;
+    }
+
+    .hover-match-context {
+      color: #c9d1d9;
+      line-height: 1.4;
+    }
+
+    .hover-refusal {
+      color: #f85149;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #30363d;
+    }
+
+    .hover-refusal-item {
+      margin-bottom: 6px;
+    }
   `;
 
   @property({ type: Object })
   entities: Record<string, number> = {};
+
+  @property({ type: Object })
+  entityMatches: Record<string, EntityMatch[]> = {};
 
   @property({ type: Number })
   signalThreshold = 3;
@@ -210,6 +315,14 @@ export class WordCloud extends LitElement {
 
   @state()
   private longPressTimer: number | null = null;
+
+  @state()
+  private hoveredWord: string | null = null;
+
+  @state()
+  private hoverPos: { x: number; y: number } = { x: 0, y: 0 };
+
+  private hoverHideTimer: number | null = null;
 
   @property({ type: Array })
   hiddenEntities: string[] = [];  // Banned entities (for count display)
@@ -498,6 +611,110 @@ export class WordCloud extends LitElement {
     this.selectedWord = null;
   }
 
+  private handleWordHover(word: string, e: MouseEvent) {
+    // Cancel any pending hide
+    if (this.hoverHideTimer) {
+      clearTimeout(this.hoverHideTimer);
+      this.hoverHideTimer = null;
+    }
+    this.hoveredWord = word;
+    // Position popup near cursor but ensure it stays on screen
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    this.hoverPos = {
+      x: Math.min(rect.left, window.innerWidth - 420),
+      y: Math.min(rect.bottom + 8, window.innerHeight - 320)  // Below the word
+    };
+  }
+
+  private startHoverHideTimer() {
+    // Delay before hiding to allow moving mouse to popup
+    if (this.hoverHideTimer) clearTimeout(this.hoverHideTimer);
+    this.hoverHideTimer = window.setTimeout(() => {
+      this.hoveredWord = null;
+      this.hoverHideTimer = null;
+    }, 400);  // 400ms gives time to move mouse to popup
+  }
+
+  private cancelHoverHideTimer() {
+    if (this.hoverHideTimer) {
+      clearTimeout(this.hoverHideTimer);
+      this.hoverHideTimer = null;
+    }
+  }
+
+  private handlePromotedClick() {
+    this.dispatchEvent(new CustomEvent('edit-promoted', {
+      bubbles: true,
+      composed: true,
+      detail: { entities: this.promotedEntities }
+    }));
+  }
+
+  private handleBannedClick() {
+    this.dispatchEvent(new CustomEvent('edit-banned', {
+      bubbles: true,
+      composed: true,
+      detail: { entities: this.hiddenEntities }
+    }));
+  }
+
+  private renderHoverPopup() {
+    if (!this.hoveredWord) return null;
+
+    const matches = this.entityMatches[this.hoveredWord] || [];
+    if (matches.length === 0) {
+      return html`
+        <div
+          class="hover-popup"
+          style="left: ${this.hoverPos.x}px; top: ${this.hoverPos.y}px;"
+          @mouseenter=${this.cancelHoverHideTimer}
+          @mouseleave=${this.startHoverHideTimer}
+        >
+          <div class="hover-popup-title">${this.hoveredWord}: ${this.entities[this.hoveredWord] || 0}x</div>
+          <div class="hover-popup-content">
+            <div style="color: #6e7681;">No detailed match data available</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Separate refusals from regular matches
+    const regularMatches = matches.filter(m => !m.is_refusal);
+    const refusals = matches.filter(m => m.is_refusal);
+
+    return html`
+      <div
+        class="hover-popup"
+        style="left: ${this.hoverPos.x}px; top: ${this.hoverPos.y}px;"
+        @mouseenter=${this.cancelHoverHideTimer}
+        @mouseleave=${this.startHoverHideTimer}
+      >
+        <div class="hover-popup-title">${this.hoveredWord}: ${matches.length} match${matches.length !== 1 ? 'es' : ''}</div>
+        <div class="hover-popup-content">
+          ${regularMatches.map((m, i) => html`
+            <div class="hover-match">
+              <div class="hover-match-header">
+                <span class="hover-match-num">${i + 1}.</span>
+                <span class="hover-match-model">${m.model.split('/').pop()}</span>
+              </div>
+              <div class="hover-match-question">"${m.question}"</div>
+              <div class="hover-match-context">${m.context || '(no context)'}</div>
+            </div>
+          `)}
+          ${refusals.length > 0 ? html`
+            <div class="hover-refusal">
+              ${refusals.map(r => html`
+                <div class="hover-refusal-item">
+                  <strong>${r.model.split('/').pop()}</strong> refused: "${r.context || 'No response'}"
+                </div>
+              `)}
+            </div>
+          ` : null}
+        </div>
+      </div>
+    `;
+  }
+
   render() {
     const signalCount = this.words.filter(w => w.count >= this.signalThreshold).length;
     const noiseCount = this.words.filter(w => w.count < this.signalThreshold).length;
@@ -512,21 +729,21 @@ export class WordCloud extends LitElement {
                 const isPromoted = this.promotedEntities.includes(word.text);
                 const isDeadEnd = this.deadEnds.includes(word.text);
                 const isLiveThread = this.liveThreads.includes(word.text);
-                const statusLabel = isPromoted ? ' [PROMOTED]' : isDeadEnd ? ' [DEAD END]' : isLiveThread ? ' [LIVE]' : '';
                 return html`
                   <span
                     class="word ${word.count >= this.signalThreshold ? 'signal' : ''} ${this.selectedWord === word.text ? 'selected' : ''} ${isPromoted ? 'promoted' : ''} ${isDeadEnd ? 'dead-end' : ''} ${isLiveThread && !isPromoted ? 'live-thread' : ''}"
                     style="font-size: ${word.size}px; color: ${word.color}; left: ${word.x}px; top: ${word.y}px;"
-                    title="${word.text}: ${word.count}x${statusLabel}"
+                    @mouseenter=${(e: MouseEvent) => this.handleWordHover(word.text, e)}
                     @mousedown=${(e: MouseEvent) => this.handleWordMouseDown(word.text, e)}
                     @mouseup=${(e: MouseEvent) => this.handleWordMouseUp(word.text, e)}
                     @contextmenu=${(e: MouseEvent) => this.handleWordRightClick(word.text, e)}
-                    @mouseleave=${() => { this.selectedWord = null; this.pressStartTime = 0; if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; } }}
+                    @mouseleave=${() => { this.startHoverHideTimer(); this.selectedWord = null; this.pressStartTime = 0; if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; } }}
                   >
                     ${word.text}
                   </span>
                 `;
               })}
+              ${this.renderHoverPopup()}
             `}
 
         <div class="stats-bar">
@@ -540,8 +757,10 @@ export class WordCloud extends LitElement {
               <span class="temp-label">hot</span>
             </div>
           </div>
-          <div>
-            ${this.liveThreads.length} live / ${this.deadEnds.length} dead / ${signalCount} signal${this.hiddenEntities.length > 0 ? html` / <span style="color: #f85149;">${this.hiddenEntities.length} banned</span>` : ''}
+          <div class="counts">
+            ${this.liveThreads.length} live / ${this.deadEnds.length} dead / ${signalCount} signal
+            ${this.promotedEntities.length > 0 ? html` / <span class="count-link promoted" @click=${this.handlePromotedClick}>${this.promotedEntities.length} promoted</span>` : ''}
+            ${this.hiddenEntities.length > 0 ? html` / <span class="count-link banned" @click=${this.handleBannedClick}>${this.hiddenEntities.length} banned</span>` : ''}
           </div>
         </div>
       </div>

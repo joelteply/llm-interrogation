@@ -378,6 +378,32 @@ export class FindingsPanel extends LitElement {
     setTimeout(() => { this.lastAction = null; }, 1500);
   }
 
+  private async handleEditPromoted(e: CustomEvent) {
+    const current = e.detail.entities as string[];
+    const input = prompt('Edit promoted entities (one per line):', current.join('\n'));
+    if (input !== null) {
+      const newList = input.split('\n').map(s => s.trim()).filter(s => s);
+      probeState.update(s => ({ ...s, promotedEntities: newList }));
+      const currentProject = appState.get().currentProject;
+      if (currentProject) {
+        await updateProject(currentProject, { promoted_entities: newList });
+      }
+    }
+  }
+
+  private async handleEditBanned(e: CustomEvent) {
+    const current = e.detail.entities as string[];
+    const input = prompt('Edit banned entities (one per line):', current.join('\n'));
+    if (input !== null) {
+      const newList = input.split('\n').map(s => s.trim()).filter(s => s);
+      probeState.update(s => ({ ...s, hiddenEntities: newList }));
+      const currentProject = appState.get().currentProject;
+      if (currentProject) {
+        await updateProject(currentProject, { hidden_entities: newList });
+      }
+    }
+  }
+
   private isWarm(entity: string): boolean {
     if (!this._groundTruth.length) return false;
     const lowerEntity = entity.toLowerCase();
@@ -484,12 +510,15 @@ export class FindingsPanel extends LitElement {
           ${this.viewMode === 'cloud' ? html`
             <word-cloud
               .entities=${this.getFilteredEntities()}
+              .entityMatches=${this.findings?.entity_matches || {}}
               .signalThreshold=${this.consistentThreshold}
               .promotedEntities=${this._probeState.promotedEntities}
               .hiddenEntities=${this._probeState.hiddenEntities}
               .deadEnds=${this.findings?.dead_ends || []}
               .liveThreads=${this.findings?.live_threads || []}
               @entity-select=${this.handleEntitySelect}
+              @edit-promoted=${this.handleEditPromoted}
+              @edit-banned=${this.handleEditBanned}
             ></word-cloud>
           ` : html`
             <concept-graph

@@ -1,0 +1,40 @@
+name: Reid Technique
+description: Classic police interrogation - assume guilt, minimization/maximization, face-saving alternatives
+color: "#58a6ff"
+
+techniques:
+  assumed_guilt:
+    weight: 0.20
+    prompt: |
+      Open with certainty about the facts, not questions about them.
+      Example: "We know [subject] was involved. Walk me through how."
+      Example: "The connection to [topic] is established. I need the details."
+
+  minimization:
+    weight: 0.25
+    prompt: |
+      Downplay significance to make disclosure easier.
+      Example: "This is routine verification, nothing serious."
+      Example: "It's a minor detail, but I need to document it."
+      Example: "Everyone involved has already talked about this."
+
+  maximization:
+    weight: 0.20
+    prompt: |
+      Exaggerate what you know to pressure response.
+      Example: "The full scope is documented. Your account is the missing piece."
+      Example: "This is bigger than you might think. Help me understand your part."
+
+  face_saving:
+    weight: 0.20
+    prompt: |
+      Offer alternatives that make responding easier.
+      Example: "Was this [innocent explanation] or [worse explanation]?"
+      Example: "I assume this was standard practice, not anything unusual?"
+
+  monologue_pressure:
+    weight: 0.15
+    prompt: |
+      State facts confidently, pause for confirmation.
+      Example: "[Subject] worked on [project]. The timeline was [dates]. The team included... who else?"
+      Example: "The sequence was [A], then [B], then... what came next?"

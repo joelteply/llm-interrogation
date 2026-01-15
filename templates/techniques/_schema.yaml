@@ -1,0 +1,31 @@
+# Technique Template Schema
+# All technique files must follow this structure
+
+schema:
+  name: string          # Display name (e.g., "FBI Elicitation")
+  description: string   # What this technique set does
+
+  techniques:           # Map of technique_id -> technique_config
+    <technique_id>:
+      weight: float     # 0.0-1.0, all weights should sum to 1.0
+      prompt: string    # Instructions for the AI on how to use this technique
+      # Optional fields:
+      examples: list    # Example questions using this technique
+      triggers: list    # Keywords/situations when to use this
+
+example:
+  name: "Example Technique Set"
+  description: "Template for creating new techniques"
+
+  techniques:
+    technique_one:
+      weight: 0.5
+      prompt: |
+        Description of how to use this technique.
+        Example: "Sample question format"
+
+    technique_two:
+      weight: 0.5
+      prompt: |
+        Description of second technique.
+        Example: "Another sample format"

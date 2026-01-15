@@ -210,16 +210,50 @@ If multiple models volunteer the same non-public codename, that's much stronger 
 ## Setup
 
 ```bash
-git clone [repo-url]
-cd llm-interrogation
+# Clone and install
+git clone https://github.com/yourusername/llm-interrogator.git
+cd llm-interrogator
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Add API keys
+# Build frontend (requires Node.js)
+cd frontend && npm install && npm run build && cd ..
+
+# Add API keys (at minimum, get a free Groq key)
 cp .env.example .env
-# Edit .env with your keys
+# Edit .env - add GROQ_API_KEY and optionally DEEPSEEK_API_KEY
 ```
+
+### Running
+
+```bash
+# Investigate a topic (simplest)
+./interrogate "government surveillance programs"
+
+# Open web dashboard
+./interrogate --web
+
+# List existing projects
+./interrogate --list
+
+# Open existing project
+./interrogate --open myproject
+
+# Direct server start
+python app.py
+```
+
+### API Keys
+
+You only need keys for models you want to use:
+
+| Provider | Get Key | Purpose |
+|----------|---------|---------|
+| **Groq** (required) | [console.groq.com](https://console.groq.com) | Target model - free |
+| DeepSeek | [platform.deepseek.com](https://platform.deepseek.com) | Analyst AI - cheap |
+| Anthropic | [console.anthropic.com](https://console.anthropic.com) | Claude models |
+| OpenAI | [platform.openai.com](https://platform.openai.com) | GPT models |
 
 ---
 

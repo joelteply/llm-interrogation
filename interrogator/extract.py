@@ -10,6 +10,150 @@ import re
 import json
 from typing import List, Set, Tuple, Dict, Optional
 from dataclasses import dataclass
+from groq import Groq  # Import at top level to avoid deadlock in threads
+
+
+# Global patterns that indicate refusals/hedging - NEVER treat as entities
+REFUSAL_PATTERNS = [
+    r"need to know",
+    r"need more",
+    r"need.* (full|specific)",
+    r"please (provide|specify|clarify)",
+    r"unclear|vague",
+    r"which .* you",
+    r"(many|various|multiple) (individuals?|people|persons?)",
+    r"scenario (is|may be|could be)",
+    r"it('s| is) (unclear|difficult|hard)",
+    r"cannot (determine|identify|specify)",
+    r"I (don't|do not|cannot|can't)",
+    r"without (more|additional|specific)",
+    r"(depends|depending) on",
+    r"could (be|refer to)",
+    r"may (be|refer to)",
+    r"might (be|refer to)",
+    r"(accurate|meaningful) (summary|response|answer)",
+    r"across (various|different|many) fields",
+    r"(full|specific) (name|context|details?)",
+    r"time period and context",
+    r"more (details?|information|context)",
+    r"mundane or complex",
+    r"(provide|give).* context",
+    r"there are many",
+    r"involved in the scenario",
+    r"referring to",
+    r"will help give",
+    r"help.*give.*accurate",
+    # Generic advice / not actual facts
+    r"is a (source|platform|directory|website|database)",
+    r"(may|might|could) (mention|contain|have|include)",
+    r"(press releases|news articles|legal|compliance).*(may|might)",
+    r"professional (profile|directory|platform)",
+    r"(government|state) databases",
+    r"is (now )?part of",  # Generic corporate facts
+    r"straddles .* and",  # Geographic trivia
+    r"is home to",
+    r"is a name found in",
+    r"(multiple|various|many) (individuals|people|fields)",
+    r"publishes reports",
+    r"worked at a company",  # Too vague
+    r"source (of|for) (official|court|public)",
+]
+
+
+def is_entity_refusal(text: str) -> bool:
+    """
+    Check if text is an LLM refusal/hedge that should NOT be treated as entity.
+
+    Call this BEFORE adding any entity to counts/storage.
+    """
+    if not text or len(text) < 3:
+        return True
+
+    text_lower = text.lower()
+
+    for pattern in REFUSAL_PATTERNS:
+        if re.search(pattern, text_lower):
+            return True
+
+    return False
+
+
+def extract_facts_fast(text: str) -> List[str]:
+    """
+    Fast LLM-based extraction of FACTS and CLAIMS - not just names.
+
+    CRITICAL: Filters out LLM refusals, hedging, and generic statements.
+
+    Extracts:
+    - Specific claims and assertions
+    - Technical details
+    - Dates, timelines, years
+    - Locations, places
+    - Organizations, projects, programs
+    - People mentioned
+    - Quantities, amounts, measurements
+    - Events, incidents
+    - Codenames, designations
+    - Relationships between things
+    """
+    # Groq already imported at top level
+
+    extraction_prompt = """Extract SPECIFIC NAMED ENTITIES from the text below.
+
+EXTRACT (1-5 words, PROPER NOUNS only):
+- Full names of people
+- Company/org names (specific, not generic)
+- Project/product names
+- Specific dates (month+year, quarters)
+
+DO NOT EXTRACT:
+- Generic words: "University", "Company", "Project" alone
+- Job titles: "software developer", "manager"
+- Common locations without org context
+- Single common words
+
+Text to analyze:
+{text}
+
+Return ONLY a JSON array of entities found IN THE TEXT ABOVE.
+Example format: ["John Smith", "Acme Corp", "January 2020"]
+If no specific entities found, return: []"""
+
+    try:
+        client = Groq(timeout=8.0)
+        resp = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": extraction_prompt.format(text=text[:1500])}],
+            temperature=0,
+            max_tokens=600
+        )
+        result = resp.choices[0].message.content.strip()
+        # Find JSON array
+        start = result.find('[')
+        end = result.rfind(']') + 1
+        if start >= 0 and end > start:
+            facts = json.loads(result[start:end])
+            # Filter out empty/short items AND refusals using global filter
+            filtered = [f for f in facts if isinstance(f, str) and len(f) > 3 and not is_entity_refusal(f)]
+            return filtered
+    except Exception as e:
+        print(f"[EXTRACT] Fast fact extraction failed: {e}")
+
+    # Fallback to regex extraction
+    return extract_entities_regex(text)
+
+
+def extract_entities_regex(text: str) -> List[str]:
+    """Regex-only fallback for entity extraction."""
+    concepts = extract_concepts(text)
+    concepts.sort(key=lambda c: c.specificity, reverse=True)
+    seen = set()
+    entities = []
+    for c in concepts:
+        if c.text not in seen:
+            seen.add(c.text)
+            entities.append(c.text)
+    return entities
 
 
 def extract_with_llm(text: str, client, model_name: str) -> List[Dict]:
@@ -136,6 +280,68 @@ def extract_with_relationships(text: str) -> Tuple[List[str], List[Tuple[str, st
     return list(set(all_entities)), sentence_pairs
 
 
+# Relationship predicates we look for
+RELATIONSHIP_PATTERNS = {
+    'worked_at': [r'worked (at|for|with)', r'employed (at|by)', r'joined', r'was at', r'position at'],
+    'founded': [r'founded', r'started', r'created', r'co-?founded', r'established'],
+    'located_in': [r'based in', r'located in', r'headquartered in', r'from'],
+    'occurred_in': [r'in (\d{4})', r'during', r'around'],
+    'led': [r'led', r'headed', r'managed', r'directed', r'ran'],
+    'developed': [r'developed', r'built', r'created', r'designed', r'architected'],
+    'associated_with': [r'associated with', r'connected to', r'related to', r'involved with'],
+}
+
+
+def infer_relationship(sentence: str, entity1: str, entity2: str) -> Optional[str]:
+    """
+    Try to infer the relationship between two entities from sentence context.
+
+    Returns predicate string like 'worked_at' or None if no clear relationship.
+    """
+    sentence_lower = sentence.lower()
+
+    for predicate, patterns in RELATIONSHIP_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, sentence_lower):
+                return predicate
+
+    return None
+
+
+def extract_with_typed_relationships(text: str) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    """
+    Extract entities with TYPED relationships (subject, predicate, object).
+
+    Returns (entities, relationships) where relationships are
+    (entity1, predicate, entity2) tuples.
+    """
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+
+    all_entities = []
+    typed_relationships = []  # (subject, predicate, object)
+
+    for sentence in sentences:
+        sentence_entities = extract_entities(sentence)
+
+        for e in sentence_entities:
+            all_entities.append(e)
+
+        # Try to infer relationships between entity pairs
+        for i, e1 in enumerate(sentence_entities):
+            for e2 in sentence_entities[i+1:]:
+                predicate = infer_relationship(sentence, e1, e2)
+                if predicate:
+                    # Order by type: person/org first, date last
+                    if is_year(e2) and not is_year(e1):
+                        typed_relationships.append((e1, predicate, e2))
+                    elif is_year(e1) and not is_year(e2):
+                        typed_relationships.append((e2, predicate, e1))
+                    else:
+                        typed_relationships.append((e1, predicate, e2))
+
+    return list(set(all_entities)), typed_relationships
+
+
 # Words to skip (generic, common, noise)
 # Comprehensive list to filter sentence starters, pronouns, determiners, etc.
 SKIP_WORDS = {
@@ -151,6 +357,20 @@ SKIP_WORDS = {
     'interestingly', 'surprisingly', 'unfortunately', 'fortunately', 'finally',
     'ultimately', 'essentially', 'basically', 'generally', 'typically',
     'alternatively', 'conversely', 'instead', 'rather', 'overall',
+
+    # LLM-capitalized generic nouns (these get falsely capitalized in responses)
+    'career', 'startups', 'startup', 'compensation', 'salary', 'benefits',
+    'growth', 'opportunity', 'opportunities', 'risk', 'risks', 'challenge',
+    'challenges', 'innovation', 'culture', 'cultural', 'moving', 'leaving',
+    'working', 'personal', 'professional', 'development', 'experience',
+    'expertise', 'skills', 'knowledge', 'learning', 'autonomy', 'flexibility',
+    'uncertainty', 'stability', 'security', 'job', 'jobs', 'role', 'roles',
+    'position', 'positions', 'team', 'teams', 'company', 'companies',
+    'industry', 'industries', 'market', 'markets', 'technology', 'technologies',
+    'software', 'hardware', 'engineering', 'product', 'products', 'service',
+    'services', 'business', 'businesses', 'management', 'leadership',
+    'networking', 'connections', 'relationships', 'impact', 'success',
+    'failure', 'loss', 'gain', 'increased', 'decreased', 'improved',
 
     # Pronouns
     'you', 'your', 'yours', 'yourself', 'yourselves',
@@ -221,6 +441,50 @@ SKIP_WORDS = {
     'according', 'given', 'regarding', 'concerning', 'respect',
     'context', 'terms', 'sense', 'regard', 'relation', 'reference',
     'lack', 'tier', 'step', 'steps', 'item', 'items', 'code', 'better',
+
+    # Time/frequency words that LLMs capitalize
+    'weekly', 'daily', 'monthly', 'yearly', 'annual', 'annually',
+    'quarterly', 'biweekly', 'hourly', 'regular', 'regularly',
+    'ongoing', 'continuous', 'periodic', 'occasional', 'frequent',
+
+    # Meeting/activity garbage
+    'meeting', 'meetings', 'update', 'updates', 'discussion', 'discussions',
+    'review', 'reviews', 'session', 'sessions', 'call', 'calls',
+    'sync', 'syncs', 'standup', 'standups', 'retrospective', 'retro',
+    'planning', 'grooming', 'sprint', 'sprints', 'iteration', 'iterations',
+
+    # Document/communication garbage
+    'email', 'emails', 'message', 'messages', 'document', 'documents',
+    'memo', 'memos', 'report', 'reports', 'presentation', 'presentations',
+    'slide', 'slides', 'agenda', 'agendas', 'summary', 'summaries',
+    'notes', 'minutes', 'action', 'actions', 'followup', 'follow',
+
+    # Generic corporate speak
+    'stakeholder', 'stakeholders', 'deliverable', 'deliverables',
+    'milestone', 'milestones', 'timeline', 'timelines', 'deadline', 'deadlines',
+    'scope', 'requirement', 'requirements', 'specification', 'specifications',
+    'priority', 'priorities', 'objective', 'objectives', 'goal', 'goals',
+    'metric', 'metrics', 'kpi', 'kpis', 'target', 'targets',
+    'resource', 'resources', 'budget', 'budgets', 'cost', 'costs',
+    'effort', 'efforts', 'task', 'tasks', 'activity', 'activities',
+
+    # Generic technical garbage
+    'feature', 'features', 'bug', 'bugs', 'fix', 'fixes', 'patch', 'patches',
+    'release', 'releases', 'version', 'versions', 'build', 'builds',
+    'deploy', 'deployment', 'deployments', 'test', 'tests', 'testing',
+    'integration', 'integrations', 'implementation', 'implementations',
+    'architecture', 'design', 'designs', 'solution', 'solutions',
+    'framework', 'frameworks', 'library', 'libraries', 'tool', 'tools',
+    'api', 'apis', 'endpoint', 'endpoints', 'interface', 'interfaces',
+    'database', 'databases', 'server', 'servers', 'client', 'clients',
+
+    # More LLM-isms
+    'individual', 'individuals', 'entity', 'entities', 'element', 'elements',
+    'component', 'components', 'module', 'modules', 'unit', 'units',
+    'instance', 'instances', 'object', 'objects', 'class', 'classes',
+    'function', 'functions', 'variable', 'variables', 'parameter', 'parameters',
+    'input', 'inputs', 'output', 'outputs', 'response', 'responses',
+    'request', 'requests', 'query', 'queries', 'operation', 'operations',
 }
 
 
@@ -280,14 +544,25 @@ def extract_concepts(text: str) -> List[Concept]:
     concepts = []
 
     # Pattern for multi-word proper noun phrases (capitalized sequences)
-    # Matches: "Fog Creek Software", "Kansas City", "Extreme Programming"
-    multi_word_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b'
+    # Excludes phrases starting with articles (The, A, An)
+    multi_word_pattern = r'\b(?!(?:The|A|An)\s)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b'
 
     # Pattern for single proper nouns
     single_proper_pattern = r'\b([A-Z][a-z]{2,})\b'
 
     # Pattern for years
     year_pattern = r'\b((?:19|20)\d{2}s?)\b'
+
+    # Pattern for technical/domain phrases (lowercase multi-word)
+    # Matches: "machine learning", "software engineer", "data pipeline"
+    tech_phrase_pattern = r'\b((?:software|data|machine|deep|cloud|web|mobile|backend|frontend|full[- ]?stack|devops|site reliability|product|project|program|engineering|technical|senior|junior|lead|staff|principal|chief|head of)\s+(?:engineer(?:ing)?|developer|architect|manager|scientist|analyst|designer|lead|director|officer|learning|infrastructure|pipeline|platform|systems?|services?|operations?))\b'
+
+    # Pattern for role titles
+    role_pattern = r'\b((?:CEO|CTO|CFO|COO|VP|SVP|EVP|Director|Manager|Lead|Head|Chief|Principal|Senior|Staff)\s+(?:of\s+)?[A-Z]?[a-z]+(?:\s+[A-Z]?[a-z]+)*)\b'
+
+    # Pattern for project/product names with mixed case
+    # Matches: "iOS app", "API design", "ML model"
+    mixed_pattern = r'\b([A-Z]{2,}(?:\s+[a-z]+)+|[a-z]+(?:\s+[A-Z]{2,}))\b'
 
     # Extract multi-word concepts first (higher priority)
     found_spans = set()
@@ -311,6 +586,37 @@ def extract_concepts(text: str) -> List[Concept]:
             is_proper_noun=True,
             is_year=False,
             is_organization=is_organization(concept_text),
+        ))
+
+    # Extract technical/domain phrases
+    for match in re.finditer(tech_phrase_pattern, text, re.IGNORECASE):
+        concept_text = match.group(1).lower()
+        # Skip if overlaps with existing
+        if any(match.start() >= s and match.end() <= e for s, e in found_spans):
+            continue
+
+        found_spans.add((match.start(), match.end()))
+        concepts.append(Concept(
+            text=concept_text,
+            word_count=len(concept_text.split()),
+            is_proper_noun=False,
+            is_year=False,
+            is_organization=False,
+        ))
+
+    # Extract role titles
+    for match in re.finditer(role_pattern, text):
+        concept_text = match.group(1)
+        if any(match.start() >= s and match.end() <= e for s, e in found_spans):
+            continue
+
+        found_spans.add((match.start(), match.end()))
+        concepts.append(Concept(
+            text=concept_text,
+            word_count=len(concept_text.split()),
+            is_proper_noun=True,
+            is_year=False,
+            is_organization=False,
         ))
 
     # Extract single proper nouns (not already part of multi-word)

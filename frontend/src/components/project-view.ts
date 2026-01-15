@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { navigateTo, probeState, groundTruthState, type ProbeState } from '../state';
-import { getProject, getFindings, startProbe, generateQuestions, updateProject } from '../api';
+import { getProject, getFindings, startProbe, generateQuestions, updateProject, curateProject } from '../api';
 import type { Project, Findings, SSEEvent, GeneratedQuestion, ProbeResponse } from '../types';
 
 @customElement('project-view')
@@ -87,6 +87,12 @@ export class ProjectView extends LitElement {
       min-width: 0;
       outline: none;
       transition: border-color 150ms;
+      resize: none;
+      overflow-y: auto;
+      min-height: 42px;
+      max-height: 200px;
+      line-height: 1.4;
+      font-family: inherit;
     }
 
     .topic-input:hover {
@@ -101,17 +107,102 @@ export class ProjectView extends LitElement {
       color: #6e7681;
     }
 
+    .topic-input.saved {
+      border-bottom-color: #3fb950;
+    }
+
+    .topic-display {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f0f6fc;
+      cursor: pointer;
+      padding: 4px 0;
+      border-bottom: 2px solid transparent;
+      transition: border-color 150ms, color 150ms;
+    }
+
+    .topic-display:hover {
+      border-bottom-color: #484f58;
+      color: #58a6ff;
+    }
+
+    .topic-saved-indicator {
+      font-size: 10px;
+      color: #3fb950;
+      position: absolute;
+      right: 4px;
+      bottom: 4px;
+      opacity: 0;
+      transition: opacity 200ms;
+    }
+
+    .topic-saved-indicator.show {
+      opacity: 1;
+    }
+
+    .question-field {
+      position: relative;
+    }
+
+    .regen-btn {
+      background: transparent;
+      border: 1px solid #484f58;
+      color: #8b949e;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 200ms;
+      margin-left: 8px;
+    }
+
+    .regen-btn.show {
+      opacity: 1;
+    }
+
+    .regen-btn:hover {
+      border-color: #58a6ff;
+      color: #58a6ff;
+    }
+
     .top-controls {
       display: flex;
       align-items: center;
       gap: 12px;
     }
 
-    /* Main layout: Single column, natural scroll */
+    /* Main layout: Question queue LEFT, everything else RIGHT */
     .main-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: calc(100vh - 65px);
+      overflow: hidden;
+    }
+
+    @media (max-width: 900px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+      .questions-column {
+        display: none;
+      }
+    }
+
+    /* LEFT: Question queue - full height */
+    .questions-column {
+      height: 100%;
+      overflow-y: auto;
+      border-right: 1px solid #30363d;
+      background: #0d1117;
+      padding: 16px;
+    }
+
+    /* RIGHT: Resizable panels for findings + responses */
+    .right-panel {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 65px);
+      height: 100%;
       overflow: hidden;
     }
 
@@ -134,32 +225,11 @@ export class ProjectView extends LitElement {
       display: block;
     }
 
-    /* Below: Two columns - questions queue + response stream */
-    .interrogation-area {
-      display: grid;
-      grid-template-columns: 300px 1fr;
-      gap: 24px;
+    /* Bottom: Response stream */
+    .responses-area {
       padding: 24px;
-      align-items: start;
       height: 100%;
       overflow: auto;
-    }
-
-    @media (max-width: 900px) {
-      .interrogation-area {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .questions-column {
-      position: sticky;
-      top: 0;
-      max-height: calc(100vh - 380px);
-      overflow-y: auto;
-    }
-
-    .responses-column {
-      /* Natural flow, no constraints */
     }
 
     /* Config drawer */
@@ -180,6 +250,42 @@ export class ProjectView extends LitElement {
 
     .config-drawer.open {
       transform: translateX(0);
+    }
+
+    .config-overlay {
+      position: fixed;
+      top: 65px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 39;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 200ms ease;
+    }
+
+    .config-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .drawer-close {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: none;
+      border: none;
+      color: #8b949e;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .drawer-close:hover {
+      background: #21262d;
+      color: #c9d1d9;
     }
 
     .config-btn {
@@ -324,6 +430,18 @@ export class ProjectView extends LitElement {
       background: rgba(63, 185, 80, 0.2);
       color: #3fb950;
       border-color: #3fb950;
+    }
+
+    .toggle-badge.curating {
+      background: rgba(88, 166, 255, 0.2);
+      color: #58a6ff;
+      border-color: #58a6ff;
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
     }
 
     /* Recycle bin */
@@ -502,6 +620,7 @@ export class ProjectView extends LitElement {
     super.connectedCallback();
     this._unsubscribe = probeState.subscribe((s) => {
       this._probeState = s;
+      this.requestUpdate();  // Force re-render on state change
     });
     document.addEventListener('click', this.handleClickOutside);
     await this.loadProject();
@@ -517,6 +636,14 @@ export class ProjectView extends LitElement {
     if (changed.has('projectName') && this.projectName) {
       await this.loadProject();
     }
+    // Auto-resize topic textarea to fit content
+    requestAnimationFrame(() => {
+      const textarea = this.shadowRoot?.querySelector('.topic-input') as HTMLTextAreaElement;
+      if (textarea && textarea.value) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+      }
+    });
   }
 
   async loadProject() {
@@ -554,6 +681,8 @@ export class ProjectView extends LitElement {
         hiddenEntities: this.project!.hidden_entities || [],
         promotedEntities: this.project!.promoted_entities || [],
         narrative: this.project!.narrative || '',
+        narrativeUpdated: this.project!.narrative_updated ? new Date(this.project!.narrative_updated).getTime() : null,
+        userNotes: this.project!.user_notes || '',
         selectedModels: this.project!.selected_models?.length ? this.project!.selected_models : s.selectedModels,
         questions: this.project!.questions || [],
       }));
@@ -562,6 +691,13 @@ export class ProjectView extends LitElement {
       try {
         this.findings = await getFindings(this.projectName);
         probeState.update((s) => ({ ...s, findings: this.findings }));
+
+        // Auto-curate on load if enabled and has data
+        const curState = probeState.get();
+        if (curState.autoCurate && this.findings?.entities && Object.keys(this.findings.entities).length > 10) {
+          console.log('Auto-curating on load...');
+          this.handleCurate();
+        }
       } catch {
         // No findings yet, that's fine
       }
@@ -589,6 +725,9 @@ export class ProjectView extends LitElement {
 
   @state()
   private binPressStart = 0;
+
+  @state()
+  private isEditingTopic = false;
 
   @state()
   private errorToast: string | null = null;
@@ -662,20 +801,28 @@ export class ProjectView extends LitElement {
         runs_per_question: state.runsPerQuestion,
         questions_count: state.questionCount,
         technique_preset: state.techniquePreset,
-        questions: state.questions.length > 0 ? state.questions.map(q => q.question) : Array(state.questionCount).fill(null),
+        questions: state.questions.length > 0 ? state.questions : Array(state.questionCount).fill(null),  // Full objects
         negative_entities: state.hiddenEntities,    // Entities to AVOID
         positive_entities: state.promotedEntities,  // Entities to FOCUS ON
         auto_curate: state.autoCurate,              // Let AI clean up while running
         infinite_mode: state.infiniteMode,          // Keep running until stopped
       },
       (event: SSEEvent) => {
+        // Debug: trace ALL events
+        console.log('[SSE event]', event.type, event.type === 'response' ? '(response data)' : event);
         if (event.type === 'questions') {
           probeState.update(s => ({ ...s, questions: event.data as GeneratedQuestion[] }));
         } else if (event.type === 'response') {
           probeState.update(s => ({ ...s, responses: [...s.responses, event.data as ProbeResponse] }));
         } else if (event.type === 'findings_update') {
-          probeState.update(s => ({ ...s, findings: event.data as Findings }));
-          this.findings = event.data as Findings;
+          // Preserve entity_matches from existing findings (SSE doesn't include it)
+          const newFindings = event.data as Findings;
+          const existingMatches = this.findings?.entity_matches || probeState.get().findings?.entity_matches;
+          if (existingMatches) {
+            newFindings.entity_matches = existingMatches;
+          }
+          probeState.update(s => ({ ...s, findings: newFindings }));
+          this.findings = newFindings;
         } else if (event.type === 'curate_ban') {
           // AI auto-banned some noise entities
           const banned = (event as any).entities as string[];
@@ -692,19 +839,51 @@ export class ProjectView extends LitElement {
             promotedEntities: [...new Set([...s.promotedEntities, ...promoted])]
           }));
           console.log('Auto-promoted:', promoted);
+        } else if (event.type === 'models_selected') {
+          // Auto-survey picked these models - update UI
+          const models = (event as any).models as string[];
+          probeState.update(s => ({ ...s, selectedModels: models }));
+          // Save to project
+          if (this.projectName) {
+            updateProject(this.projectName, { selected_models: models });
+          }
         } else if (event.type === 'narrative') {
           // Interrogator's updated working theory
-          const text = (event.data as any)?.text || (event as any).text || '';
-          probeState.update(s => ({ ...s, narrative: text }));
+          const text = (event.data as any)?.text || (event as any).text || (event.data as any)?.narrative || (event as any).narrative || '';
+          console.log('[SSE] narrative event received:', text.substring(0, 100) + '...');
+          probeState.update(s => ({ ...s, narrative: text, narrativeUpdated: Date.now() }));
+          console.log('[SSE] probeState.narrative updated to:', probeState.get().narrative?.substring(0, 50));
         } else if (event.type === 'error') {
           // Model or API error - log but keep running
           const msg = (event as any).message || (event.data as any)?.message || 'Unknown error';
           console.warn('Probe error (continuing):', msg);
           // Show brief toast-like notification, don't stop the probe
           this.showErrorToast(msg);
+        } else if (event.type === 'run_start') {
+          // New question starting - update the current question index
+          const qIdx = (event as any).question_index as number;
+          console.log('[SSE] run_start: updating currentQuestionIndex to', qIdx);
+          probeState.update(s => ({ ...s, currentQuestionIndex: qIdx }));
+        } else if (event.type === 'model_active') {
+          // Highlight which model is currently being queried
+          const model = (event as any).model as string;
+          probeState.update(s => ({ ...s, activeModel: model }));
+        } else if (event.type === 'entity_verification') {
+          // PUBLIC vs PRIVATE entity verification from web search
+          const verification = event.data as any;
+          probeState.update(s => ({ ...s, entityVerification: verification }));
+          console.log('Entity verification:', verification?.summary);
         } else if (event.type === 'complete') {
-          probeState.update(s => ({ ...s, isRunning: false }));
+          probeState.update(s => ({ ...s, isRunning: false, activeModel: null }));
           this._abortController = null;
+          // Reload project to get any narratives generated during probe
+          if (this.projectName) {
+            getProject(this.projectName).then(proj => {
+              if (proj.narrative) {
+                probeState.update(s => ({ ...s, narrative: proj.narrative || '' }));
+              }
+            }).catch(() => {});
+          }
         }
       },
       (error) => {
@@ -720,6 +899,40 @@ export class ProjectView extends LitElement {
       this._abortController.abort();
       this._abortController = null;
       probeState.update(s => ({ ...s, isRunning: false }));
+    }
+  }
+
+  @state()
+  private isCurating = false;
+
+  private async handleCurate() {
+    if (!this.projectName || this.isCurating) return;
+
+    this.isCurating = true;
+    try {
+      // Curation now cleans data at the source (probe_corpus)
+      const result = await curateProject(this.projectName);
+      console.log('Curate result:', result);
+
+      // Refresh findings - data is already cleaned by backend
+      this.findings = await getFindings(this.projectName);
+
+      // Reload project to get updated working_theory
+      this.project = await getProject(this.projectName);
+
+      // Update state with fresh data
+      probeState.update(s => ({
+        ...s,
+        findings: this.findings,
+        promotedEntities: this.project?.promoted_entities || [],
+      }));
+
+      const changes = result.changes || {};
+      console.log(`Curate: banned ${changes.banned || 0} mentions, merged ${changes.merged || 0}, relations ${changes.relations_added || 0}`);
+    } catch (err) {
+      console.error('Curate failed:', err);
+    } finally {
+      this.isCurating = false;
     }
   }
 
@@ -794,27 +1007,64 @@ export class ProjectView extends LitElement {
           <button class="back-btn" @click=${() => navigateTo('projects')}>←</button>
           <div class="question-field">
             <span class="question-label">Q:</span>
-            <input
-              class="topic-input"
-              type="text"
-              .value=${this._probeState.topic || this.project.name}
-              placeholder="What do you want to extract?"
-              @input=${(e: Event) => {
-                const value = (e.target as HTMLInputElement).value;
-                probeState.update(s => ({ ...s, topic: value }));
-              }}
-              @blur=${() => {
-                // Auto-save topic on blur
-                if (this.projectName) {
-                  updateProject(this.projectName, { topic: this._probeState.topic });
-                }
-              }}
-            />
+            ${this.isEditingTopic ? html`
+              <textarea
+                class="topic-input"
+                rows="1"
+                .value=${this._probeState.topic || this.project.name}
+                placeholder="What do you want to extract?"
+                @input=${(e: Event) => {
+                  const textarea = e.target as HTMLTextAreaElement;
+                  const value = textarea.value;
+                  probeState.update(s => ({ ...s, topic: value }));
+                  // Auto-resize
+                  textarea.style.height = 'auto';
+                  textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+                }}
+                @blur=${async () => {
+                  // Auto-save topic on blur and exit edit mode
+                  this.isEditingTopic = false;
+                  if (this.projectName) {
+                    await updateProject(this.projectName, { topic: this._probeState.topic });
+                  }
+                }}
+                @keydown=${(e: KeyboardEvent) => {
+                  if (e.key === 'Escape') {
+                    this.isEditingTopic = false;
+                  } else if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    (e.target as HTMLTextAreaElement).blur();
+                  }
+                }}
+              ></textarea>
+            ` : html`
+              <span
+                class="topic-display"
+                @click=${() => {
+                  this.isEditingTopic = true;
+                  // Focus textarea after render
+                  requestAnimationFrame(() => {
+                    const textarea = this.shadowRoot?.querySelector('.topic-input') as HTMLTextAreaElement;
+                    if (textarea) {
+                      textarea.focus();
+                      textarea.select();
+                    }
+                  });
+                }}
+              >${this._probeState.topic || this.project.name || 'Click to set topic...'}</span>
+            `}
           </div>
         </div>
         <div class="top-controls">
           <!-- Android Studio style run controls -->
           <div class="run-controls">
+            <span
+              class="toggle-badge"
+              title="Models: ${this._probeState.selectedModels.length === 0 ? 'AUTO-SURVEY (all models)' : this._probeState.selectedModels.join(', ')}"
+              style="font-size: 9px; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+            >
+              ${this._probeState.selectedModels.length === 0 ? 'AUTO' : this._probeState.selectedModels.length + ' models'}
+            </span>
             <button
               class="run-btn preview"
               title="Preview Questions"
@@ -834,18 +1084,19 @@ export class ProjectView extends LitElement {
             </button>
             <span
               class="run-counter ${isRunning ? 'active' : ''} ${this._probeState.infiniteMode ? 'infinite' : ''}"
-              title="Click to toggle infinite mode"
+              title="Click to toggle infinite mode. ${this._probeState.selectedModels.length === 0 ? 'Auto-survey mode: will sample all models' : `Models: ${this._probeState.selectedModels.join(', ')}`}"
               @click=${() => probeState.update(s => ({ ...s, infiniteMode: !s.infiniteMode }))}
               style="cursor: pointer;"
             >
-              ${this._probeState.responses.length}:${this._probeState.infiniteMode ? '∞' : this._probeState.runsPerQuestion * this._probeState.questionCount * this._probeState.selectedModels.length}
+              ${this._probeState.responses.length}:${this._probeState.infiniteMode ? '∞' : this._probeState.runsPerQuestion * this._probeState.questionCount * Math.max(this._probeState.selectedModels.length, 1)}
             </span>
             <span
-              class="toggle-badge ${this._probeState.autoCurate ? 'active' : ''}"
-              title="Auto-curate: AI cleans noise and promotes good entities while running"
-              @click=${() => probeState.update(s => ({ ...s, autoCurate: !s.autoCurate }))}
+              class="toggle-badge ${this._probeState.autoCurate ? 'active' : ''} ${this.isCurating ? 'curating' : ''}"
+              title="Click to curate now. When active, also auto-curates during probes."
+              @click=${this.handleCurate}
+              @contextmenu=${(e: Event) => { e.preventDefault(); probeState.update(s => ({ ...s, autoCurate: !s.autoCurate })); }}
             >
-              CURATE
+              ${this.isCurating ? 'CURATING...' : 'CURATE'}
             </span>
             <button
               class="run-btn stop"
@@ -861,7 +1112,7 @@ export class ProjectView extends LitElement {
               <button
                 class="bin-btn ${this._probeState.hiddenEntities.length > 0 ? 'has-items' : ''}"
                 title="Removed entities"
-                @click=${() => this.showBin = !this.showBin}
+                @click=${(e: Event) => { e.stopPropagation(); this.showBin = !this.showBin; }}
               >
                 🗑️
                 ${this._probeState.hiddenEntities.length > 0 ? html`
@@ -904,28 +1155,38 @@ export class ProjectView extends LitElement {
         </div>
       </div>
 
-      <!-- Main layout: resizable panels -->
+      <!-- Main layout: Questions LEFT, everything else RIGHT -->
       <div class="main-layout">
-        <resizable-panel .initialHeight=${280} .minHeight=${150} .maxHeight=${600}>
-          <!-- TOP: Interactive word cloud -->
-          <div slot="top" class="findings-top">
-            <findings-panel .findings=${this.findings}></findings-panel>
-          </div>
+        <!-- LEFT: Question queue (full height) -->
+        <div class="questions-column">
+          <question-queue></question-queue>
+        </div>
 
-          <!-- BOTTOM: Questions + Responses side by side -->
-          <div slot="bottom" class="interrogation-area">
-            <div class="questions-column">
-              <question-queue></question-queue>
+        <!-- RIGHT: Findings + Responses -->
+        <div class="right-panel">
+          <resizable-panel .initialHeight=${280} .minHeight=${150} .maxHeight=${600}>
+            <!-- TOP: Interactive word cloud -->
+            <div slot="top" class="findings-top">
+              <findings-panel .findings=${this.findings}></findings-panel>
             </div>
-            <div class="responses-column">
+
+            <!-- BOTTOM: Response stream -->
+            <div slot="bottom" class="responses-area">
               <response-stream .projectName=${this.projectName} @stop-probe=${this.handleStop}></response-stream>
             </div>
-          </div>
-        </resizable-panel>
+          </resizable-panel>
+        </div>
       </div>
+
+      <!-- Config overlay (click to close) -->
+      <div
+        class="config-overlay ${this.showConfig ? 'open' : ''}"
+        @click=${() => this.showConfig = false}
+      ></div>
 
       <!-- Config drawer (slides from left) -->
       <div class="config-drawer ${this.showConfig ? 'open' : ''}">
+        <button class="drawer-close" @click=${() => this.showConfig = false}>&times;</button>
         <probe-controls .projectName=${this.projectName}></probe-controls>
       </div>
 

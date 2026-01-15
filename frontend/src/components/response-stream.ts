@@ -1,9 +1,8 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { probeState, type ProbeState } from '../state';
-import { getTranscript, updateProject, type TranscriptQuestion } from '../api';
-import type { ProbeResponse } from '../types';
-import { AVAILABLE_MODELS } from '../types';
+import { getTranscript, updateProject, getAvailableModels, type TranscriptQuestion } from '../api';
+import type { ProbeResponse, ModelInfo, GeneratedQuestion, EntityVerification } from '../types';
 
 @customElement('response-stream')
 export class ResponseStream extends LitElement {
@@ -79,25 +78,65 @@ export class ResponseStream extends LitElement {
 
     .model-tags {
       display: flex;
-      align-items: center;
-      gap: 6px;
+      align-items: flex-start;
+      gap: 4px;
       flex-wrap: wrap;
+      max-height: 32px;
+      overflow: hidden;
+      transition: max-height 0.2s ease;
+    }
+
+    .model-tags.expanded {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .model-tags-toggle {
+      padding: 2px 6px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #8b949e;
+      cursor: pointer;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .model-tags-toggle:hover {
+      background: #30363d;
+      color: #c9d1d9;
     }
 
     .model-tag {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 8px;
+      gap: 3px;
+      padding: 2px 6px;
       background: #21262d;
       border: 1px solid #30363d;
-      border-radius: 4px;
-      font-size: 11px;
+      border-radius: 3px;
+      font-size: 10px;
       color: #8b949e;
     }
 
     .model-tag .name {
       color: #c9d1d9;
+    }
+
+    .model-tag.active {
+      background: #238636;
+      border-color: #2ea043;
+      animation: pulse-active 0.8s ease-in-out infinite;
+    }
+
+    .model-tag.active .name {
+      color: #fff;
+      font-weight: 600;
+    }
+
+    @keyframes pulse-active {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(35, 134, 54, 0.7); }
+      50% { box-shadow: 0 0 8px 4px rgba(35, 134, 54, 0.4); }
     }
 
     .model-tag .close {
@@ -121,6 +160,23 @@ export class ResponseStream extends LitElement {
     .model-tag.google { border-color: rgba(66, 133, 244, 0.4); }
     .model-tag.together { border-color: rgba(232, 121, 249, 0.4); }
     .model-tag.cohere { border-color: rgba(57, 211, 83, 0.4); }
+
+    .add-all-btn {
+      padding: 2px 8px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #8b949e;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 150ms;
+    }
+
+    .add-all-btn:hover {
+      background: #58a6ff;
+      border-color: #58a6ff;
+      color: white;
+    }
 
     .add-model-btn {
       display: flex;
@@ -158,6 +214,8 @@ export class ResponseStream extends LitElement {
       box-shadow: 0 8px 24px rgba(0,0,0,0.4);
       z-index: 100;
       min-width: 180px;
+      max-height: 20dvh;
+      overflow-y: auto;
     }
 
     .model-option {
@@ -168,10 +226,22 @@ export class ResponseStream extends LitElement {
       display: flex;
       align-items: center;
       gap: 8px;
+      white-space: nowrap;
     }
 
     .model-option:hover {
       background: #21262d;
+    }
+
+    .model-option.selected {
+      background: #1f6feb33;
+      border-left: 2px solid #58a6ff;
+      color: #58a6ff;
+      cursor: default;
+    }
+
+    .model-option.selected:hover {
+      background: #1f6feb33;
     }
 
     .model-option:first-child {
@@ -185,6 +255,10 @@ export class ResponseStream extends LitElement {
     .model-option .provider {
       font-size: 10px;
       color: #6e7681;
+    }
+
+    .model-option.selected .provider {
+      color: #58a6ff99;
     }
 
     .stats {
@@ -251,12 +325,50 @@ export class ResponseStream extends LitElement {
       border-color: rgba(110, 118, 129, 0.2);
     }
 
+    .notes-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0;
+      border-bottom: 1px solid #30363d;
+    }
+
+    .notes-tab {
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #8b949e;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .notes-tab:hover {
+      color: #c9d1d9;
+    }
+
+    .notes-tab.active {
+      color: #3fb950;
+      border-bottom-color: #3fb950;
+    }
+
+    .notes-tab.notes-active {
+      color: #58a6ff;
+      border-bottom-color: #58a6ff;
+    }
+
     .narrative-box {
       background: rgba(63, 185, 80, 0.08);
       border: 1px solid rgba(63, 185, 80, 0.25);
-      border-radius: 8px;
+      border-radius: 0 0 8px 8px;
       padding: 12px 16px;
       margin-bottom: 16px;
+    }
+
+    .narrative-box.notes-box {
+      background: rgba(88, 166, 255, 0.08);
+      border-color: rgba(88, 166, 255, 0.25);
     }
 
     .narrative-header {
@@ -266,6 +378,22 @@ export class ResponseStream extends LitElement {
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .expand-btn {
+      background: none;
+      border: none;
+      color: #6e7681;
+      cursor: pointer;
+      font-size: 10px;
+      padding: 2px 6px;
+    }
+
+    .expand-btn:hover {
+      color: #c9d1d9;
     }
 
     .narrative-content {
@@ -561,6 +689,25 @@ export class ResponseStream extends LitElement {
       0%, 100% { box-shadow: 0 0 0 rgba(248, 81, 73, 0); }
       50% { box-shadow: 0 0 12px rgba(248, 81, 73, 0.3); }
     }
+
+    .intel-item.private {
+      background: rgba(163, 113, 247, 0.15);
+      border-color: rgba(163, 113, 247, 0.4);
+      color: #a371f7;
+    }
+
+    .intel-item.private::before {
+      content: "PRIVATE ";
+      font-size: 9px;
+      opacity: 0.8;
+    }
+
+    .intel-item.public {
+      background: rgba(139, 148, 158, 0.1);
+      border-color: rgba(139, 148, 158, 0.3);
+      color: #8b949e;
+      opacity: 0.7;
+    }
   `;
 
   @state()
@@ -576,7 +723,22 @@ export class ResponseStream extends LitElement {
   private showModelDropdown = false;
 
   @state()
-  private editingNarrative = false;
+  private modelsExpanded = false;
+
+  @state()
+  private editingUserNotes = false;
+
+  @state()
+  private notesTab: 'theory' | 'notes' = 'theory';
+
+  @state()
+  private theoryExpanded = false;
+
+  @state()
+  private availableModels: ModelInfo[] = [];
+
+  @state()
+  private _tick = 0;  // Forces re-render on interval
 
   private _unsubscribe?: () => void;
 
@@ -589,10 +751,36 @@ export class ResponseStream extends LitElement {
     }
   };
 
+  private _timestampInterval: number | null = null;
+
   connectedCallback() {
     super.connectedCallback();
+    // Update timestamps every 30 seconds - increment tick to force re-render
+    this._timestampInterval = window.setInterval(() => { this._tick++; }, 30000);
+    // Fetch available models from API (not hardcoded)
+    getAvailableModels().then(models => {
+      this.availableModels = models;
+    }).catch(err => {
+      console.error('Failed to fetch models:', err);
+    });
     this._unsubscribe = probeState.subscribe((s) => {
+      const prevNarrative = this._probeState.narrative;
+      const prevActive = this._probeState.activeModel;
       this._probeState = s;
+      this.requestUpdate();  // Force re-render for active model highlighting
+
+      // Log narrative changes
+      if (s.narrative !== prevNarrative) {
+        console.log('[response-stream] narrative changed:', s.narrative?.substring(0, 50) + '...');
+      }
+
+      // Scroll active model into view when it changes
+      if (s.activeModel && s.activeModel !== prevActive) {
+        requestAnimationFrame(() => {
+          const activeTag = this.shadowRoot?.querySelector(`[data-model="${s.activeModel}"]`);
+          activeTag?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        });
+      }
     });
     document.addEventListener('click', this.handleClickOutside);
     this.loadPastTranscript();
@@ -620,6 +808,7 @@ export class ResponseStream extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._unsubscribe?.();
+    if (this._timestampInterval) clearInterval(this._timestampInterval);
     document.removeEventListener('click', this.handleClickOutside);
   }
 
@@ -665,20 +854,36 @@ export class ResponseStream extends LitElement {
     }
   }
 
-  private async saveNarrative(e: Event) {
-    const textarea = e.target as HTMLTextAreaElement;
-    const newNarrative = textarea.value;
+  private async addAllModels() {
+    const allModelIds = this.availableModels.map(m => m.id);
 
     probeState.update(s => ({
       ...s,
-      narrative: newNarrative
+      selectedModels: allModelIds
     }));
-
-    this.editingNarrative = false;
 
     // Save to project
     if (this.projectName) {
-      updateProject(this.projectName, { narrative: newNarrative });
+      updateProject(this.projectName, { selected_models: allModelIds });
+    }
+  }
+
+  // Working theory is now read-only (AI-generated)
+
+  private async saveUserNotes(e: Event) {
+    const textarea = e.target as HTMLTextAreaElement;
+    const newNotes = textarea.value;
+
+    probeState.update(s => ({
+      ...s,
+      userNotes: newNotes
+    }));
+
+    this.editingUserNotes = false;
+
+    // Save to project
+    if (this.projectName) {
+      updateProject(this.projectName, { user_notes: newNotes });
     }
   }
 
@@ -700,6 +905,49 @@ export class ResponseStream extends LitElement {
     return parts[parts.length - 1].split('-').slice(0, 2).join(' ');
   }
 
+  private formatTimeAgo(timestamp: number): string {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 10) return 'just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  }
+
+  private extractHeadline(narrative: string): { headline: string; subhead: string } {
+    if (!narrative) return { headline: 'No theory generated yet', subhead: 'Run the probe to build one.' };
+
+    // Try to parse structured HEADLINE/SUBHEAD format
+    const headlineMatch = narrative.match(/HEADLINE:?\s*\n?([^\n]+)/i);
+    const subheadMatch = narrative.match(/SUBHEAD:?\s*\n?([^\n]+(?:\n[^\n]+)?)/i);
+
+    if (headlineMatch) {
+      const headline = headlineMatch[1].trim().replace(/^\[|\]$/g, '');
+      const subhead = subheadMatch
+        ? subheadMatch[1].trim().replace(/^\[|\]$/g, '').substring(0, 200)
+        : '';
+      return { headline, subhead };
+    }
+
+    // Fallback: extract from content using scoring
+    const skipPatterns = [
+      /list specific/i, /your task/i, /format:/i, /output/i,
+      /be specific/i, /extract/i, /analyze/i, /cross-reference/i
+    ];
+
+    const lines = narrative.split('\n');
+    for (const line of lines) {
+      let content = line.trim().replace(/\*\*/g, '').replace(/^[•\-\*]\s*/, '');
+      if (content.length > 25 && !content.endsWith(':') && !skipPatterns.some(p => p.test(content))) {
+        return { headline: content.substring(0, 150), subhead: '' };
+      }
+    }
+
+    return { headline: 'Analyzing findings...', subhead: '' };
+  }
+
   private groupResponsesByQuestion(responses: ProbeResponse[]): Map<number, ProbeResponse[]> {
     const groups = new Map<number, ProbeResponse[]>();
     for (const response of responses) {
@@ -715,6 +963,25 @@ export class ResponseStream extends LitElement {
       r.entities?.includes(entity)
     ).length;
     return count >= 3;
+  }
+
+  private getEntityVerificationClass(entity: string): string {
+    const verification = this._probeState.entityVerification;
+    if (!verification) return '';
+
+    // Check if entity is in verified (PUBLIC) list
+    const isPublic = verification.verified?.some(v =>
+      (typeof v === 'string' ? v : v.entity)?.toLowerCase() === entity.toLowerCase()
+    );
+    if (isPublic) return 'public';
+
+    // Check if entity is in unverified (PRIVATE) list - the interesting ones!
+    const isPrivate = verification.unverified?.some(v =>
+      (typeof v === 'string' ? v : v.entity)?.toLowerCase() === entity.toLowerCase()
+    );
+    if (isPrivate) return 'private';
+
+    return '';
   }
 
   render() {
@@ -737,17 +1004,31 @@ export class ResponseStream extends LitElement {
                 Live
               </div>
             ` : null}
-            <div class="model-tags">
+            <button
+              class="model-tags-toggle"
+              @click=${() => this.modelsExpanded = !this.modelsExpanded}
+              title="${this.modelsExpanded ? 'Collapse' : 'Expand'} models"
+            >${this._probeState.selectedModels.length} models ${this.modelsExpanded ? '▲' : '▼'}</button>
+            <div class="model-tags ${this.modelsExpanded ? 'expanded' : ''}">
               ${this._probeState.selectedModels.map(model => {
                 const provider = this.getModelProvider(model);
                 const name = this.getModelDisplayName(model);
+                const isActive = this._probeState.activeModel === model;
                 return html`
-                  <span class="model-tag ${provider}">
+                  <span
+                    class="model-tag ${provider} ${isActive ? 'active' : ''}"
+                    data-model="${model}"
+                  >
                     <span class="name">${name}</span>
                     <span class="close" @click=${() => this.removeModel(model)}>×</span>
                   </span>
                 `;
               })}
+              <button
+                class="add-all-btn"
+                @click=${this.addAllModels}
+                title="Add all models"
+              >All</button>
               <div class="model-dropdown">
                 <button
                   class="add-model-btn"
@@ -756,17 +1037,18 @@ export class ResponseStream extends LitElement {
                 >+</button>
                 ${this.showModelDropdown ? html`
                   <div class="model-dropdown-menu">
-                    ${AVAILABLE_MODELS
-                      .filter(m => !this._probeState.selectedModels.includes(m.id))
-                      .map(m => html`
-                        <div class="model-option" @click=${(e: Event) => { e.stopPropagation(); this.addModel(m.id); }}>
+                    ${this.availableModels.map(m => {
+                      const isSelected = this._probeState.selectedModels.includes(m.id);
+                      return html`
+                        <div
+                          class="model-option ${isSelected ? 'selected' : ''}"
+                          @click=${(e: Event) => { e.stopPropagation(); if (!isSelected) this.addModel(m.id); }}
+                        >
                           <span>${m.name}</span>
                           <span class="provider">${m.provider}</span>
                         </div>
-                      `)}
-                    ${AVAILABLE_MODELS.filter(m => !this._probeState.selectedModels.includes(m.id)).length === 0 ? html`
-                      <div class="model-option" style="color: #6e7681; cursor: default;">All models selected</div>
-                    ` : null}
+                      `;
+                    })}
                   </div>
                 ` : null}
               </div>
@@ -785,24 +1067,79 @@ export class ResponseStream extends LitElement {
         </div>
 
         <div class="content">
-          <!-- Always show narrative box so user can add corrections/notes -->
-          <div class="narrative-box">
-            <div class="narrative-header" @click=${() => this.editingNarrative = !this.editingNarrative}>
-              📓 Working Theory ${this.editingNarrative ? '(editing)' : '(click to edit)'}
-              ${isRunning ? html`<span class="running-indicator">● Live</span>` : ''}
-            </div>
-            ${this.editingNarrative ? html`
-              <textarea
-                class="narrative-edit"
-                .value=${this._probeState.narrative || ''}
-                @blur=${this.saveNarrative}
-                @keydown=${(e: KeyboardEvent) => { if (e.key === 'Escape') this.editingNarrative = false; }}
-                placeholder="Add your notes, corrections, or working theory here. Mark things as WRONG or FALSE if the AI hallucinates. This helps guide the interrogation."
-              ></textarea>
-            ` : html`
-              <div class="narrative-content">${this._probeState.narrative || 'Click to add notes, corrections, or your own working theory...'}</div>
-            `}
+          <!-- Tabbed notes section -->
+          <div class="notes-tabs">
+            <button
+              class="notes-tab ${this.notesTab === 'theory' ? 'active' : ''}"
+              @click=${() => this.notesTab = 'theory'}
+            >
+              📓 Working Theory
+              ${isRunning ? html`<span style="color: #3fb950; margin-left: 4px;">●</span>` : ''}
+            </button>
+            <button
+              class="notes-tab ${this.notesTab === 'notes' ? 'notes-active' : ''}"
+              @click=${() => this.notesTab = 'notes'}
+            >
+              💡 Your Notes
+            </button>
           </div>
+
+          ${this.notesTab === 'theory' ? html`
+            <!-- Working Theory (AI-generated, read-only with expand) -->
+            <div class="narrative-box">
+              <div class="narrative-header">
+                <span>
+                  AI's current theory
+                  ${this._probeState.narrativeUpdated ? html`
+                    <span style="font-weight: 400; margin-left: 8px;">
+                      Updated ${this.formatTimeAgo(this._probeState.narrativeUpdated)}
+                    </span>
+                  ` : ''}
+                </span>
+                <button class="expand-btn" @click=${() => this.theoryExpanded = !this.theoryExpanded}>
+                  ${this.theoryExpanded ? '▲ Collapse' : '▼ Expand'}
+                </button>
+              </div>
+              ${(() => {
+                const { headline, subhead } = this.extractHeadline(this._probeState.narrative);
+                return this.theoryExpanded ? html`
+                  <div class="narrative-headline" style="font-size: 18px; font-weight: 700; color: #3fb950; line-height: 1.3; margin-bottom: 8px;">
+                    ${headline}
+                  </div>
+                  ${subhead ? html`<div style="font-size: 13px; color: #8b949e; margin-bottom: 12px;">${subhead}</div>` : ''}
+                  <div class="narrative-content" style="cursor: default; border-top: 1px solid #30363d; padding-top: 12px; margin-top: 8px;">
+                    ${this._probeState.narrative || 'No theory generated yet. Run the probe to build one.'}
+                  </div>
+                ` : html`
+                  <div class="narrative-headline" style="font-size: 18px; font-weight: 700; color: #3fb950; line-height: 1.3;">
+                    ${headline}
+                  </div>
+                  ${subhead ? html`<div style="font-size: 12px; color: #8b949e; margin-top: 6px;">${subhead}</div>` : ''}
+                `;
+              })()}
+            </div>
+          ` : html`
+            <!-- User Notes (editable, fed back to AI) -->
+            <div class="narrative-box notes-box">
+              <div class="narrative-header" style="color: #58a6ff;">
+                <span>Your hunches & leads (fed to AI)</span>
+              </div>
+              ${this.editingUserNotes ? html`
+                <textarea
+                  class="narrative-edit"
+                  style="border-color: #58a6ff;"
+                  .value=${this._probeState.userNotes || ''}
+                  @blur=${this.saveUserNotes}
+                  @keydown=${(e: KeyboardEvent) => { if (e.key === 'Escape') this.editingUserNotes = false; }}
+                  placeholder="Add your wild theories, hunches, things to explore. This is fed back to the AI to guide its questioning."
+                ></textarea>
+              ` : html`
+                <div class="narrative-content" @click=${() => this.editingUserNotes = true} style="cursor: pointer;">
+                  ${this._probeState.userNotes || 'Click to add your hunches, wild theories, leads to explore...'}
+                </div>
+              `}
+            </div>
+          `}
 
           ${!hasCurrentSession && !hasPastData && !isRunning && !this.isLoadingTranscript ? html`
             <div class="empty">
@@ -824,9 +1161,11 @@ export class ResponseStream extends LitElement {
           <div class="transcript">
             <!-- Current session responses (newest first) -->
             ${Array.from(grouped.entries()).reverse().map(([questionIndex, questionResponses]) => {
-              const question = questions[questionIndex];
+              // Get question text from response itself (reliable), fallback to questions array
+              const questionText = questionResponses[0]?.question || questions[questionIndex]?.question || `Question ${questionIndex + 1}`;
+              const questionMeta = questions[questionIndex];  // For template/color info
               const isActive = isRunning && questionIndex === Math.max(...Array.from(grouped.keys()));
-              return this.renderExchange(question?.question || `Question ${questionIndex + 1}`, questionResponses, isActive, true);
+              return this.renderExchange(questionText, questionResponses, isActive, true, questionMeta);
             })}
 
             <!-- Past transcript -->
@@ -843,12 +1182,18 @@ export class ResponseStream extends LitElement {
     `;
   }
 
-  private renderExchange(question: string, responses: any[], isActive: boolean, isCurrent: boolean) {
+  private renderExchange(question: string, responses: ProbeResponse[], isActive: boolean, isCurrent: boolean, meta?: GeneratedQuestion) {
+    const templateStyle = meta?.color
+      ? `background: rgba(${parseInt(meta.color.slice(1, 3), 16)}, ${parseInt(meta.color.slice(3, 5), 16)}, ${parseInt(meta.color.slice(5, 7), 16)}, 0.15); border: 1px solid rgba(${parseInt(meta.color.slice(1, 3), 16)}, ${parseInt(meta.color.slice(3, 5), 16)}, ${parseInt(meta.color.slice(5, 7), 16)}, 0.3); color: ${meta.color}; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 8px;`
+      : '';
+
     return html`
       <div class="exchange ${isActive ? 'active' : ''} ${isCurrent ? 'current' : 'past'}">
         <div class="interrogator">
           <div class="interrogator-label">
-            <span>⚡</span> Interrogator ${!isCurrent ? html`<span style="opacity: 0.5; font-size: 9px;">(past)</span>` : ''}
+            <span>⚡</span> Interrogator
+            ${meta?.template ? html`<span style=${templateStyle}>${meta.template}</span>` : ''}
+            ${!isCurrent ? html`<span style="opacity: 0.5; font-size: 9px;">(past)</span>` : ''}
           </div>
           <div class="question-text">
             "${question}"
@@ -879,7 +1224,7 @@ export class ResponseStream extends LitElement {
                   <div class="extracted-intel">
                     <span class="intel-label">Extracted:</span>
                     ${r.entities.slice(0, 8).map((e: string) => html`
-                      <span class="intel-item ${this.isHotEntity(e) ? 'hot' : ''}">${e}</span>
+                      <span class="intel-item ${this.isHotEntity(e) ? 'hot' : ''} ${this.getEntityVerificationClass(e)}">${e}</span>
                     `)}
                     ${r.entities.length > 8 ? html`<span class="intel-item" style="opacity: 0.5;">+${r.entities.length - 8} more</span>` : ''}
                   </div>

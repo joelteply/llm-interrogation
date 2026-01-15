@@ -9,7 +9,7 @@ Uses frequency thresholds to separate signal from noise:
 from typing import Dict, List, Tuple, Set, Optional
 from dataclasses import dataclass, field
 from collections import Counter
-from .extract import score_concept
+from .extract import score_concept, is_entity_refusal
 
 
 @dataclass
@@ -27,6 +27,9 @@ class Findings:
     cooccurrence_counts: Counter = field(default_factory=Counter)  # "A|||B" -> count
     sentence_cooccurrence_counts: Counter = field(default_factory=Counter)  # Same-sentence pairs (stronger)
     by_model: Dict[str, Counter] = field(default_factory=dict)
+
+    # Relationship tracking (subject, predicate, object) -> count
+    relationship_counts: Counter = field(default_factory=Counter)  # "A|||worked_at|||B" -> count
 
     # Track when entities last produced new connections (for dead-end detection)
     entity_last_new_connection: Dict[str, int] = field(default_factory=dict)  # entity -> corpus_size when last new connection
@@ -72,6 +75,10 @@ class Findings:
         if is_refusal:
             self.refusal_count += 1
             return
+
+        # Filter out refusal-like entities BEFORE counting
+        # This catches LLM hedging that sneaks through extraction
+        entities = [e for e in entities if not is_entity_refusal(e)]
 
         # Count entities
         for e in entities:
@@ -262,12 +269,22 @@ class Findings:
         ]
         return self._live_threads_cache
 
+    def model_count(self, entity: str) -> int:
+        """Count how many different models mentioned this entity (corroboration)."""
+        count = 0
+        for model, entities in self.by_model.items():
+            if entity in entities:
+                count += 1
+        return count
+
     def score_entity(self, entity: str) -> float:
         """
-        Score an entity based on frequency, specificity, connectivity, and connection quality.
+        Score an entity based on frequency, specificity, connectivity, and CORROBORATION.
 
         Higher score = more important for narrative.
-        Dead ends (leading only to noise) get penalized.
+        - Multi-model agreement = strong signal (corroborated)
+        - Single-model only = likely noise or hallucination
+        - Dead ends (leading only to noise) get penalized
         """
         if entity in self._scores_cache:
             return self._scores_cache[entity]
@@ -275,6 +292,15 @@ class Findings:
         frequency = self.entity_counts.get(entity, 0)
         connections = len(self.get_connections(entity))
         base = score_concept(entity, frequency, connections)
+
+        # CORROBORATION BONUS/PENALTY - multi-model agreement is key signal
+        models = self.model_count(entity)
+        if models >= 3:
+            base *= 2.0  # Strong corroboration - 3+ models agree
+        elif models == 2:
+            base *= 1.5  # Some corroboration
+        elif models == 1 and len(self.by_model) > 3:
+            base *= 0.3  # Single model only = suspicious (likely noise/hallucination)
 
         # Apply dead-end penalty - entities that only lead to noise get downweighted
         if self.is_dead_end(entity):
@@ -306,18 +332,43 @@ class Findings:
             return 0
         return self.refusal_count / self.corpus_size
 
+    def add_typed_relationship(self, subject: str, predicate: str, obj: str):
+        """Add a typed relationship (subject, predicate, object)."""
+        key = f"{subject}|||{predicate}|||{obj}"
+        self.relationship_counts[key] += 1
+
+    @property
+    def validated_relationships(self) -> List[Tuple[str, str, str, int]]:
+        """
+        Relationships that appear 2+ times.
+        Returns (subject, predicate, object, count).
+        """
+        result = []
+        for key, count in self.relationship_counts.items():
+            if count >= 2:  # Must appear at least twice
+                parts = key.split("|||")
+                if len(parts) == 3:
+                    result.append((parts[0], parts[1], parts[2], count))
+        return sorted(result, key=lambda x: -x[3])
+
     def to_dict(self) -> dict:
         """Convert to dict for JSON serialization."""
+        # Include model count (corroboration) for each scored entity
+        scored_with_models = [
+            {"entity": e, "score": round(s, 2), "frequency": f, "models": self.model_count(e)}
+            for e, s, f in self.scored_entities[:30]
+        ]
         return {
             "entities": dict(self.entity_counts.most_common(50)),
             "cooccurrences": [
                 {"entities": [e1, e2], "count": c}
                 for e1, e2, c in self.validated_cooccurrences[:100]
             ],
-            "scored_entities": [
-                {"entity": e, "score": round(s, 2), "frequency": f}
-                for e, s, f in self.scored_entities[:30]
+            "relationships": [
+                {"subject": s, "predicate": p, "object": o, "count": c}
+                for s, p, o, c in self.validated_relationships[:50]
             ],
+            "scored_entities": scored_with_models,  # Includes model count for corroboration
             "by_model": {
                 m: dict(c.most_common(20))
                 for m, c in self.by_model.items()

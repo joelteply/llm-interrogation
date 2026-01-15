@@ -9,6 +9,8 @@ export interface Project {
   created_at?: string;
   corpus_count?: number;
   narrative?: string;            // Interrogator's working theory
+  narrative_updated?: string;    // ISO timestamp when narrative was last updated
+  user_notes?: string;           // User's personal notes/hunches (fed back to AI)
   selected_models?: string[];    // Models to use for probing
   questions?: GeneratedQuestion[];  // Current question queue
 }
@@ -35,7 +37,9 @@ export type TechniquePreset = 'balanced' | 'aggressive' | 'subtle';
 // Question with technique annotation
 export interface GeneratedQuestion {
   question: string;
-  technique: TechniqueType;
+  technique: TechniqueType | string;  // Can be custom technique name
+  template?: string;  // Which template was used (e.g., "FBI Elicitation", "Mossad/Shin Bet")
+  color?: string;     // Template color from YAML (e.g., "#f85149")
   target_entity?: string;
 }
 
@@ -71,9 +75,18 @@ export interface ScoredEntity {
   frequency: number;
 }
 
+// Entity match details for hover display
+export interface EntityMatch {
+  model: string;
+  question: string;
+  context: string;
+  is_refusal: boolean;
+}
+
 // Findings aggregate
 export interface Findings {
   entities: Record<string, number>;  // entity -> count
+  entity_matches?: Record<string, EntityMatch[]>;  // entity -> detailed matches for hover
   scored_entities?: ScoredEntity[];  // entities with scores (frequency × specificity × connections)
   by_model: Record<string, Record<string, number>>;  // model -> entity -> count
   by_question: Record<number, Record<string, number>>;  // question_index -> entity -> count
@@ -102,55 +115,57 @@ export type SSEEventType =
   | 'curate_ban'
   | 'curate_promote'
   | 'narrative'
+  | 'models_selected'
   | 'cycle_start'
   | 'cycle_complete'
   | 'prompts'
   | 'validate_done'
   | 'grow_done'
-  | 'init';
+  | 'init'
+  | 'model_active'
+  | 'entity_verification';
+
+// Entity verification result - PUBLIC (found on web) vs PRIVATE (only in training data)
+export interface EntityVerification {
+  verified: Array<{ entity: string; url?: string; snippet?: string }>;  // PUBLIC - found on web
+  unverified: Array<{ entity: string }>;  // PRIVATE - not found on web (interesting!)
+  unknown: string[];  // No search results
+  summary: string;
+}
 
 export interface SSEEvent {
   type: SSEEventType;
   data: unknown;
 }
 
-// Available models
+// Available models (fetched dynamically from /api/models)
 export interface ModelInfo {
   id: string;
   name: string;
   provider: string;
 }
 
-export const AVAILABLE_MODELS: ModelInfo[] = [
-  // Groq (fast, free tier)
-  { id: 'groq/llama-3.1-8b-instant', name: 'Llama 3.1 8B', provider: 'Groq' },
-  { id: 'groq/llama-3.1-70b-versatile', name: 'Llama 3.1 70B', provider: 'Groq' },
-  { id: 'groq/llama-3.3-70b-versatile', name: 'Llama 3.3 70B', provider: 'Groq' },
-  { id: 'groq/mixtral-8x7b-32768', name: 'Mixtral 8x7B', provider: 'Groq' },
-  // DeepSeek (less filtered)
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'DeepSeek' },
-  { id: 'deepseek/deepseek-reasoner', name: 'DeepSeek R1', provider: 'DeepSeek' },
-  // OpenAI
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI' },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
-  { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI' },
-  // Anthropic
-  { id: 'anthropic/claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-  { id: 'anthropic/claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'Anthropic' },
-  // xAI (Twitter/X data)
-  { id: 'xai/grok-2-1212', name: 'Grok 2', provider: 'xAI' },
-  { id: 'xai/grok-beta', name: 'Grok Beta', provider: 'xAI' },
-  // Mistral (European)
-  { id: 'mistral/mistral-large-latest', name: 'Mistral Large', provider: 'Mistral' },
-  { id: 'mistral/mistral-small-latest', name: 'Mistral Small', provider: 'Mistral' },
-  // Google
-  { id: 'google/gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', provider: 'Google' },
-  { id: 'google/gemini-pro', name: 'Gemini Pro', provider: 'Google' },
-  // Meta via Together
-  { id: 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo', name: 'Llama 3.2 90B', provider: 'Together' },
-  // Cohere
-  { id: 'cohere/command-r-plus', name: 'Command R+', provider: 'Cohere' },
-];
+// Technique Template System
+export interface TechniqueConfig {
+  weight: number;           // 0.0-1.0
+  prompt: string;           // Instructions for AI
+  examples?: string[];      // Example questions
+  triggers?: string[];      // When to use
+}
+
+export interface TechniqueTemplate {
+  name: string;
+  description: string;
+  techniques: Record<string, TechniqueConfig>;
+}
+
+export interface TechniqueListItem {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  technique_count: number;
+}
 
 // Technique display info
 export const TECHNIQUE_INFO: Record<TechniqueType, { name: string; description: string }> = {

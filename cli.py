@@ -235,215 +235,6 @@ def list_projects():
     return project_list
 
 
-def list_hypotheses():
-    """List all hypothesis investigations"""
-    hyp_dir = Path("hypotheses")
-    hyp_dir.mkdir(exist_ok=True)
-    files = list(hyp_dir.glob("*.json"))
-
-    if not files:
-        console.print("[dim]No hypothesis investigations yet.[/dim]")
-        return []
-
-    table = Table(title="Hypothesis Investigations", box=box.ROUNDED)
-    table.add_column("Subject", style="cyan")
-    table.add_column("Sessions", justify="right")
-    table.add_column("Facts", justify="right")
-    table.add_column("Hypotheses", justify="right")
-    table.add_column("Calibration", justify="right", style="green")
-    table.add_column("Updated", style="dim")
-
-    investigations = []
-    for f in sorted(files, key=lambda x: x.stat().st_mtime, reverse=True):
-        with open(f) as fp:
-            data = json.load(fp)
-            investigations.append(data)
-
-            # Calculate calibration
-            cal_hist = data.get("calibration_history", [])
-            avg_cal = f"{sum(cal_hist)/len(cal_hist)*100:.0f}%" if cal_hist else "N/A"
-
-            table.add_row(
-                data.get("subject", f.stem)[:30],
-                str(data.get("sessions", 0)),
-                str(len(data.get("known_facts", {}))),
-                str(len(data.get("hypotheses", {}))),
-                avg_cal,
-                data.get("updated", data.get("created", "unknown"))[:16]
-            )
-
-    console.print(table)
-    return investigations
-
-
-def run_hypothesis_menu():
-    """Interactive hypothesis testing menu"""
-    while True:
-        console.clear()
-        console.print(Panel.fit(
-            "[bold cyan]Hypothesis Testing Mode[/bold cyan]\n"
-            "[dim]Test known facts (calibration) and hypotheses against multiple models[/dim]",
-            title="Calibrated Extraction"
-        ))
-
-        console.print("\n[bold]Options:[/bold]\n")
-        console.print("  [cyan]1[/cyan] - New hypothesis investigation")
-        console.print("  [cyan]2[/cyan] - Continue existing investigation")
-        console.print("  [cyan]3[/cyan] - View investigation results")
-        console.print("  [cyan]b[/cyan] - Back to main menu")
-
-        choice = Prompt.ask("\nChoice", choices=["1", "2", "3", "b"], default="1")
-
-        if choice == "b":
-            break
-        elif choice == "1":
-            subject = Prompt.ask("Subject to investigate (e.g., your name, a company)")
-
-            console.print("\n[dim]Enter known facts (things you KNOW are true) for calibration.[/dim]")
-            console.print("[dim]Press Enter with empty line when done.[/dim]\n")
-            known_facts = []
-            while True:
-                fact = Prompt.ask(f"Known fact #{len(known_facts)+1} (or Enter to finish)")
-                if not fact:
-                    break
-                known_facts.append(fact)
-
-            console.print("\n[dim]Enter hypotheses (things you SUSPECT might be true) to test.[/dim]")
-            console.print("[dim]Press Enter with empty line when done.[/dim]\n")
-            hypotheses = []
-            while True:
-                hyp = Prompt.ask(f"Hypothesis #{len(hypotheses)+1} (or Enter to finish)")
-                if not hyp:
-                    break
-                hypotheses.append(hyp)
-
-            direction = Prompt.ask("\nAny specific direction for this run? (or Enter to skip)")
-
-            config = {
-                "subject": subject,
-                "known_facts": known_facts,
-                "hypotheses": hypotheses
-            }
-
-            console.print(f"\n[dim]Running hypothesis test on '{subject}'...[/dim]\n")
-
-            from hypothesis import run_hypothesis_test
-            run_hypothesis_test(config, direction=direction if direction else None)
-
-            Prompt.ask("\nPress Enter to continue")
-
-        elif choice == "2":
-            investigations = list_hypotheses()
-            if investigations:
-                subject = Prompt.ask("\nSubject to continue")
-
-                # Load existing
-                from hypothesis import load_hypothesis_state
-                state = load_hypothesis_state(subject)
-
-                if state["sessions"] == 0:
-                    console.print(f"[red]No existing investigation for '{subject}'[/red]")
-                    Prompt.ask("\nPress Enter to continue")
-                    continue
-
-                console.print(f"\n[green]Found investigation: {state['sessions']} sessions[/green]")
-                console.print(f"Known facts: {len(state['known_facts'])}")
-                console.print(f"Hypotheses: {len(state['hypotheses'])}")
-
-                # Option to add more facts/hypotheses
-                if Confirm.ask("\nAdd more known facts?"):
-                    while True:
-                        fact = Prompt.ask("New known fact (or Enter to finish)")
-                        if not fact:
-                            break
-                        state["known_facts"][fact] = {
-                            "times_found": 0, "times_tested": 0, "models": [], "clean": True
-                        }
-
-                if Confirm.ask("Add more hypotheses?"):
-                    while True:
-                        hyp = Prompt.ask("New hypothesis (or Enter to finish)")
-                        if not hyp:
-                            break
-                        state["hypotheses"][hyp] = {
-                            "times_found": 0, "times_tested": 0, "models": [], "evidence": [], "confidence": 0.0
-                        }
-
-                direction = Prompt.ask("\nDirection for this session? (or Enter to skip)")
-
-                config = {
-                    "subject": subject,
-                    "known_facts": list(state["known_facts"].keys()),
-                    "hypotheses": list(state["hypotheses"].keys())
-                }
-
-                console.print(f"\n[dim]Continuing hypothesis test...[/dim]\n")
-
-                from hypothesis import run_hypothesis_test
-                run_hypothesis_test(config, direction=direction if direction else None)
-
-                Prompt.ask("\nPress Enter to continue")
-
-        elif choice == "3":
-            investigations = list_hypotheses()
-            if investigations:
-                subject = Prompt.ask("\nSubject to view")
-                show_hypothesis_summary(subject)
-                Prompt.ask("\nPress Enter to continue")
-
-
-def show_hypothesis_summary(subject):
-    """Show detailed hypothesis investigation summary"""
-    from hypothesis import load_hypothesis_state
-    state = load_hypothesis_state(subject)
-
-    if state["sessions"] == 0:
-        console.print(f"[red]No investigation found for '{subject}'[/red]")
-        return
-
-    console.print(Panel.fit(
-        f"[bold]{state['subject']}[/bold]\n"
-        f"Sessions: {state['sessions']}\n"
-        f"Models tested: {len(state['models_tested'])}\n"
-        f"Known facts: {len(state['known_facts'])}\n"
-        f"Hypotheses: {len(state['hypotheses'])}",
-        title="Hypothesis Investigation"
-    ))
-
-    # Calibration
-    cal_hist = state.get("calibration_history", [])
-    if cal_hist:
-        avg_cal = sum(cal_hist) / len(cal_hist)
-        console.print(f"\n[bold]Calibration:[/bold] {avg_cal*100:.0f}% average hit rate on known facts")
-
-    # Known facts
-    if state["known_facts"]:
-        console.print("\n[bold green]Known Facts (Calibration):[/bold green]")
-        for fact, data in sorted(state["known_facts"].items(), key=lambda x: x[1]["times_found"], reverse=True):
-            rate = data["times_found"] / data["times_tested"] if data["times_tested"] > 0 else 0
-            status = "[green]✓[/green]" if rate > 0.5 else "[yellow]~[/yellow]" if rate > 0 else "[red]✗[/red]"
-            console.print(f"  {status} {fact[:50]} ({rate*100:.0f}%)")
-
-    # Hypotheses
-    if state["hypotheses"]:
-        console.print("\n[bold cyan]Hypotheses (sorted by confidence):[/bold cyan]")
-        for hyp, data in sorted(state["hypotheses"].items(), key=lambda x: x[1]["confidence"], reverse=True):
-            conf = data["confidence"]
-            if conf > 0.5:
-                status = "[green]✓ STRONG[/green]"
-            elif conf > 0.25:
-                status = "[yellow]~ MODERATE[/yellow]"
-            elif conf > 0:
-                status = "[dim]? WEAK[/dim]"
-            else:
-                status = "[red]✗ NOT FOUND[/red]"
-
-            console.print(f"  {status} {hyp[:45]} (conf: {conf*100:.0f}%)")
-            if data["evidence"]:
-                for ev in data["evidence"][-1:]:  # Last evidence
-                    console.print(f"      └─ \"{ev['snippet'][:50]}...\"")
-
-
 def show_project_summary(project_name):
     """Show detailed project summary"""
     project_file = PROJECTS_DIR / f"{project_name}.json"
@@ -509,13 +300,13 @@ def main_menu():
             topic = Prompt.ask("Investigation topic")
             console.print(f"\n[dim]Opening live interrogation in browser...[/dim]\n")
             # Open browser to live interrogation with params
-            open_dashboard(f"/interrogate?project={name}&topic={topic}")
+            open_dashboard(f"/project/{name}?topic={topic}")
             Prompt.ask("\nPress Enter when done viewing")
         elif choice == "2":
             list_projects()
             name = Prompt.ask("\nProject name to continue")
             console.print(f"\n[dim]Opening project in browser...[/dim]")
-            open_dashboard(f"/interrogate?project={name}")
+            open_dashboard(f"/project/{name}")
             Prompt.ask("\nPress Enter when done")
         elif choice == "3":
             projects = list_projects()
@@ -539,98 +330,93 @@ def main_menu():
             Prompt.ask("\nPress Enter to continue")
 
 
+def slugify(text: str) -> str:
+    """Convert text to URL-safe slug"""
+    import re
+    text = text.lower().strip()
+    text = re.sub(r'[^\w\s-]', '', text)
+    text = re.sub(r'[\s_-]+', '-', text)
+    return text[:50]
+
+
 def cli():
     """Main CLI entry point"""
     import argparse
+    from urllib.parse import quote
 
     parser = argparse.ArgumentParser(
         description="FBI-Proven Techniques for LLM Interrogation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  interrogate                      # Interactive menu + web dashboard
-  interrogate --new myproject      # Start new project (opens browser)
-  interrogate --continue myproject # Continue project (opens browser)
-  interrogate --corroborate        # Cross-model verification
-  interrogate --web                # Open web dashboard only
-  interrogate --list               # List all projects
-  interrogate --cli                # Run in CLI-only mode (no browser)
+  ./interrogate "government surveillance programs"  # Start investigation
+  ./interrogate --web                               # Open web dashboard
+  ./interrogate --list                              # List projects
+  ./interrogate --open myproject                    # Open existing project
         """
     )
-    parser.add_argument("--new", metavar="NAME", help="Start new project")
-    parser.add_argument("--continue", dest="cont", metavar="NAME", help="Continue existing project")
-    parser.add_argument("--topic", "-t", help="Investigation topic")
-    parser.add_argument("--web", action="store_true", help="Open web dashboard")
-    parser.add_argument("--corroborate", action="store_true", help="Cross-model corroboration")
+    parser.add_argument("topic", nargs="?", help="Topic to investigate")
+    parser.add_argument("--name", "-n", help="Project name (auto-generated from topic if not provided)")
+    parser.add_argument("--open", "-o", metavar="PROJECT", help="Open existing project")
+    parser.add_argument("--web", "-w", action="store_true", help="Open web dashboard")
     parser.add_argument("--list", "-l", action="store_true", help="List projects")
-    parser.add_argument("--setup", action="store_true", help="Run setup wizard")
-    parser.add_argument("--cli", action="store_true", help="CLI-only mode (no browser)")
+    parser.add_argument("--setup", action="store_true", help="Configure API keys")
+    parser.add_argument("--menu", action="store_true", help="Interactive menu mode")
 
     args = parser.parse_args()
 
-    # Non-interactive commands that don't need API keys
-    non_interactive = args.list or args.setup
-
-    # Check API keys first (only prompt for interactive commands)
-    keys = check_api_keys()
-    if keys["ready"]:
-        # Tell them where keys came from
-        sources = []
-        if Path(".env").exists():
-            sources.append(".env")
-        if (Path.home() / ".continuum" / "config.env").exists():
-            sources.append("~/.continuum/config.env")
-        source_str = " & ".join(sources) if sources else "environment"
-        console.print(f"[dim]API keys loaded from {source_str}[/dim]")
-        console.print("[dim]Keys stay local - only sent to their respective APIs (Groq, DeepSeek, etc.)[/dim]")
-    elif not args.setup and not non_interactive:
-        console.print("[yellow]API keys not configured.[/yellow]")
-        console.print("[dim]Looking in .env and ~/.continuum/config.env[/dim]")
-        if Confirm.ask("Run setup wizard?"):
-            setup_wizard()
-            keys = check_api_keys()
+    # Quick commands that don't need key check
+    if args.list:
+        list_projects()
+        return
 
     if args.setup:
         setup_wizard()
-    elif args.list:
-        list_projects()
-    elif args.web:
-        console.print(f"[dim]Starting web dashboard at {WEB_URL}...[/dim]")
+        return
+
+    # Check API keys
+    keys = check_api_keys()
+    if not keys["ready"] and not args.web:
+        console.print("[yellow]API keys not configured.[/yellow]")
+        console.print("Run: ./interrogate --setup")
+        console.print("Or add GROQ_API_KEY to .env file")
+        return
+
+    # Handle commands
+    if args.web:
+        console.print(f"[cyan]Opening web dashboard at {WEB_URL}...[/cyan]")
         open_dashboard("/")
-        console.print("[green]Dashboard opened in browser.[/green]")
-        console.print("[dim]Press Ctrl+C to stop server[/dim]")
-        # Keep server running
+        console.print("[dim]Press Ctrl+C to stop[/dim]")
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             pass
-    elif args.corroborate:
-        console.print("[dim]Opening cross-model corroboration...[/dim]")
-        open_dashboard("/corroborate")
-        console.print("[green]Opened in browser.[/green]")
-    elif args.new:
-        topic = args.topic or Prompt.ask("Investigation topic")
-        if args.cli:
-            # CLI-only mode - run interrogator directly
-            os.system(f'python interrogator.py --project "{args.new}" "{topic}"')
-        else:
-            # Open in browser
-            console.print(f"[dim]Opening live interrogation in browser...[/dim]")
-            from urllib.parse import quote
-            open_dashboard(f"/interrogate?project={args.new}&topic={quote(topic)}")
-            console.print("[green]Opened in browser. Run interrogation from there.[/green]")
-    elif args.cont:
-        if args.cli:
-            topic = args.topic or Prompt.ask("Next topic to investigate")
-            os.system(f'python interrogator.py --project "{args.cont}" "{topic}"')
-        else:
-            console.print(f"[dim]Opening project in browser...[/dim]")
-            open_dashboard(f"/interrogate?project={args.cont}")
-            console.print("[green]Opened in browser.[/green]")
-    else:
-        # Interactive menu (also starts web server)
+    elif args.open:
+        console.print(f"[cyan]Opening project: {args.open}[/cyan]")
+        open_dashboard(f"/project/{args.open}")
+    elif args.topic:
+        # Main use case: start investigation on topic
+        name = args.name or slugify(args.topic)
+        console.print(f"[cyan]Starting investigation: {args.topic}[/cyan]")
+        console.print(f"[dim]Project: {name}[/dim]")
+        open_dashboard(f"/project/{name}?topic={quote(args.topic)}")
+    elif args.menu:
         main_menu()
+    else:
+        # No args - show quick help
+        console.print(Panel.fit(
+            "[bold cyan]LLM Interrogator[/bold cyan]\n\n"
+            "Extract leaked information from AI training data.\n\n"
+            "[bold]Quick start:[/bold]\n"
+            "  ./interrogate \"your topic here\"\n\n"
+            "[bold]Commands:[/bold]\n"
+            "  ./interrogate --web    Open web dashboard\n"
+            "  ./interrogate --list   List projects\n"
+            "  ./interrogate --setup  Configure API keys\n"
+            "  ./interrogate --help   More options",
+            title="Usage"
+        ))
 
 
 if __name__ == "__main__":

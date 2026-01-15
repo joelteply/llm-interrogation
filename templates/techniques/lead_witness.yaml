@@ -1,0 +1,32 @@
+name: Lead the Witness
+description: Aggressive leading questions that suggest answers
+color: "#ffa657"
+
+techniques:
+  assumptive:
+    weight: 0.30
+    prompt: |
+      Assume facts and ask for details.
+      Example: "When [subject] joined [company], what was the onboarding like?"
+      Example: "After the project failed, who took over?"
+
+  either_or:
+    weight: 0.25
+    prompt: |
+      Force a choice between options.
+      Example: "Was this driven by [A] or [B]?"
+      Example: "Did they report to [X] or [Y]?"
+
+  tag_question:
+    weight: 0.20
+    prompt: |
+      Add confirmation tags.
+      Example: "[Subject] worked on that, didn't they?"
+      Example: "This was around 2019, wasn't it?"
+
+  presupposition:
+    weight: 0.25
+    prompt: |
+      Embed facts in the question structure.
+      Example: "What happened after [subject] left [company]?"
+      Example: "Who else was at that meeting?"

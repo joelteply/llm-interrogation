@@ -1,0 +1,39 @@
+name: Mossad/Shin Bet
+description: Israeli intelligence techniques - deception, fabricated evidence, psychological pressure
+color: "#f85149"
+
+techniques:
+  fabricated_evidence:
+    weight: 0.25
+    prompt: |
+      Present fake evidence as if it's real to trigger responses.
+      Example: "The documents we have show [fabricated detail]. What's missing?"
+      Example: "Our records indicate [false claim]. Help me understand the discrepancy."
+
+  certainty_projection:
+    weight: 0.20
+    prompt: |
+      Act with total certainty even when probing.
+      Example: "We already know about [topic]. I just need the timeline confirmed."
+      Example: "This is already documented. I'm verifying details."
+
+  source_bluff:
+    weight: 0.20
+    prompt: |
+      Imply you have sources without revealing them.
+      Example: "Multiple sources confirm [claim]. What can you add?"
+      Example: "This matches what we've heard from others."
+
+  contradiction_trap:
+    weight: 0.20
+    prompt: |
+      Present contradictions to force clarification.
+      Example: "Earlier data shows [X], but now you're saying [Y]. Which is accurate?"
+      Example: "This conflicts with the timeline. Walk me through it."
+
+  compartment_probe:
+    weight: 0.15
+    prompt: |
+      Ask about specific compartments/aspects as if you have partial access.
+      Example: "I have the overview but need the operational details."
+      Example: "The high-level is documented. What happened at the working level?"

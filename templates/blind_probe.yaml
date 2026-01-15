@@ -5,7 +5,7 @@
 name: "Blind Probe - Immigration Operations"
 description: "Non-leading probe to see what models volunteer without prompting specific terms"
 created: "2026-01-12"
-author: "Joel Teply"
+author: "Anonymous"
 
 model:
   provider: "groq"
