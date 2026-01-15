@@ -11,12 +11,13 @@ from config import PROJECTS_DIR, TEMPLATES_DIR, get_client
 from interrogator import Findings
 
 
-def sanitize_for_json(text: str) -> str:
-    """Remove control characters that break JSON parsing."""
+def sanitize_for_json(text: str, default: str = "") -> str:
+    """Whitelist only printable ASCII + space/newline. Strip everything else."""
     if not text:
-        return text
-    # Remove ASCII control chars except \n \r \t (which json.dumps handles)
-    return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+        return default
+    # Keep only: printable ASCII (32-126) + newline + tab
+    result = ''.join(c for c in text if 32 <= ord(c) <= 126 or c in '\n\t')
+    return result if result else default
 
 
 def select_models_for_round(

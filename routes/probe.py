@@ -915,10 +915,10 @@ Each question MUST contain at least one entity name from above."""
 
                             response_obj = {
                                 "question_index": result["q_idx"],
-                                "question": result["question"],
+                                "question": sanitize_for_json(result["question"]),
                                 "technique": result["technique"],
                                 "model": model_key,
-                                "response": result["response"][:500],
+                                "response": sanitize_for_json(result["response"]),
                                 "entities": entities,
                                 "is_refusal": refusal,
                                 "adapted": result["adapted"],
@@ -1336,10 +1336,10 @@ def run_cycle():
 
                                     response_obj = {
                                         "prompt_index": p_idx,
-                                        "prompt": prompt[:200],
+                                        "prompt": sanitize_for_json(prompt[:200]),
                                         "model": model_key,
                                         "run_index": run_idx,
-                                        "response": resp_text[:500],
+                                        "response": sanitize_for_json(resp_text),
                                         "entities": entities,
                                         "is_refusal": refusal
                                     }
