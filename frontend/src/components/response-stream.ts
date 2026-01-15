@@ -921,12 +921,13 @@ export class ResponseStream extends LitElement {
 
     // Try to parse structured HEADLINE/SUBHEAD format
     const headlineMatch = narrative.match(/HEADLINE:?\s*\n?([^\n]+)/i);
-    const subheadMatch = narrative.match(/SUBHEAD:?\s*\n?([^\n]+(?:\n[^\n]+)?)/i);
+    // Capture subhead until next section (CLAIMS, NEXT, etc) or double newline
+    const subheadMatch = narrative.match(/SUBHEAD:?\s*\n?([\s\S]*?)(?=\n\n|\nCLAIMS|\nNEXT|\nKEY|\n#|$)/i);
 
     if (headlineMatch) {
-      const headline = headlineMatch[1].trim().replace(/^\[|\]$/g, '');
+      const headline = headlineMatch[1].trim().replace(/^\[|\]$/g, '').replace(/^\*+|\*+$/g, '');
       const subhead = subheadMatch
-        ? subheadMatch[1].trim().replace(/^\[|\]$/g, '').substring(0, 200)
+        ? subheadMatch[1].trim().replace(/^\[|\]$/g, '').replace(/^\*+|\*+$/g, '')
         : '';
       return { headline, subhead };
     }
@@ -1093,16 +1094,13 @@ export class ResponseStream extends LitElement {
             <!-- Working Theory (AI-generated, read-only with expand) -->
             <div class="narrative-box">
               <div class="narrative-header">
-                <span>
-                  AI's current theory
-                  ${this._probeState.narrativeUpdated ? html`
-                    <span style="font-weight: 400; margin-left: 8px;" data-tick=${this._tick}>
-                      Updated ${this.formatTimeAgo(this._probeState.narrativeUpdated)}
-                    </span>
-                  ` : ''}
+                <span style="font-weight: 400; color: #8b949e; font-size: 11px;" data-tick=${this._tick}>
+                  ${this._probeState.narrativeUpdated
+                    ? `Updated ${this.formatTimeAgo(this._probeState.narrativeUpdated)}`
+                    : ''}
                 </span>
                 <button class="expand-btn" @click=${() => this.theoryExpanded = !this.theoryExpanded}>
-                  ${this.theoryExpanded ? '▲ Collapse' : '▼ Expand'}
+                  ${this.theoryExpanded ? '▲' : '▼'}
                 </button>
               </div>
               ${(() => {
@@ -1111,7 +1109,7 @@ export class ResponseStream extends LitElement {
                   <div class="narrative-headline" style="font-size: 18px; font-weight: 700; color: #3fb950; line-height: 1.3; margin-bottom: 8px;">
                     ${headline}
                   </div>
-                  ${subhead ? html`<div style="font-size: 13px; color: #8b949e; margin-bottom: 12px;">${subhead}</div>` : ''}
+                  ${subhead ? html`<div style="font-size: 14px; color: #c9d1d9; line-height: 1.5; margin-bottom: 12px; white-space: pre-wrap;">${subhead}</div>` : ''}
                   <div class="narrative-content" style="cursor: default; border-top: 1px solid #30363d; padding-top: 12px; margin-top: 8px;">
                     ${this._probeState.narrative || 'No theory generated yet. Run the probe to build one.'}
                   </div>
@@ -1119,7 +1117,7 @@ export class ResponseStream extends LitElement {
                   <div class="narrative-headline" style="font-size: 18px; font-weight: 700; color: #3fb950; line-height: 1.3;">
                     ${headline}
                   </div>
-                  ${subhead ? html`<div style="font-size: 12px; color: #8b949e; margin-top: 6px;">${subhead}</div>` : ''}
+                  ${subhead ? html`<div style="font-size: 13px; color: #c9d1d9; line-height: 1.4; margin-top: 8px; white-space: pre-wrap;">${subhead}</div>` : ''}
                 `;
               })()}
             </div>
