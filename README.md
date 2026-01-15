@@ -387,19 +387,31 @@ python app.py
 
 ### Want More Models?
 
-Add any keys you have to `.env`. The app auto-detects available models:
+Add any keys you have to `.env`. The app auto-detects available models.
+
+| Provider | Get API Key | Cost |
+|----------|-------------|------|
+| **Groq** | [console.groq.com](https://console.groq.com) | Free |
+| **DeepSeek** | [platform.deepseek.com](https://platform.deepseek.com) | ~$0.14/M tokens |
+| **xAI** | [console.x.ai](https://console.x.ai) | $2/M tokens |
+| **OpenAI** | [platform.openai.com](https://platform.openai.com) | $2.50-10/M tokens |
+| **Anthropic** | [console.anthropic.com](https://console.anthropic.com) | $3-15/M tokens |
+| **Mistral** | [console.mistral.ai](https://console.mistral.ai) | ~$0.25/M tokens |
+| **Together** | [api.together.xyz](https://api.together.xyz) | ~$0.20/M tokens |
+| **Fireworks** | [fireworks.ai](https://fireworks.ai) | ~$0.20/M tokens |
+| **Ollama** | [ollama.ai](https://ollama.ai) | Free (local) |
 
 ```bash
 # .env - add any/all of these
-GROQ_API_KEY=gsk_...        # Free - console.groq.com
-OPENAI_API_KEY=sk-...       # Paid - platform.openai.com
-ANTHROPIC_API_KEY=sk-ant-...# Paid - console.anthropic.com
-XAI_API_KEY=xai-...         # Paid - console.x.ai (Grok)
-DEEPSEEK_API_KEY=sk-...     # Cheap - platform.deepseek.com
-TOGETHER_API_KEY=...        # Cheap - api.together.xyz
-MISTRAL_API_KEY=...         # Cheap - console.mistral.ai
-FIREWORKS_API_KEY=...       # Cheap - fireworks.ai
-OLLAMA_HOST=http://localhost:11434  # Free/local
+GROQ_API_KEY=gsk_...
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+XAI_API_KEY=xai-...
+DEEPSEEK_API_KEY=sk-...
+TOGETHER_API_KEY=...
+MISTRAL_API_KEY=...
+FIREWORKS_API_KEY=...
+OLLAMA_HOST=http://localhost:11434
 ```
 
 More keys = more models to cross-validate. But one free Groq key is enough to start.
@@ -408,13 +420,21 @@ More keys = more models to cross-validate. But one free Groq key is enough to st
 
 ## Supported Models
 
-| Provider | Models | Notes |
-|----------|--------|-------|
-| Groq | llama-3.1-8b-instant, llama-3.1-70b | Fast, good for testing |
-| DeepSeek | deepseek-chat | Less filtered |
-| xAI | grok-2 | Twitter/X data included |
-| Mistral | mistral-large | European training |
-| OpenAI | gpt-4o | Different training pipeline |
+Models are auto-detected based on which API keys you provide.
+
+| Provider | Models | Cost | Notes |
+|----------|--------|------|-------|
+| **Groq** | Llama 3.3 70B, Llama 3.1 8B/70B, Mixtral, Gemma, Qwen | **Free** | Fast inference, great for testing |
+| **DeepSeek** | DeepSeek Chat, DeepSeek R1 | Cheap | Less filtered, good reasoning |
+| **xAI** | Grok 2, Grok 3 | Paid | Trained on Twitter/X data |
+| **OpenAI** | GPT-4o, GPT-4 Turbo, GPT-3.5 | Paid | Different training pipeline |
+| **Anthropic** | Claude Sonnet 4, Claude 3.5 Haiku | Paid | Strong reasoning, more guarded |
+| **Mistral** | Mistral Large, Mistral Small, Nemo | Cheap | European training data |
+| **Together** | Llama 3.3 70B, Llama 3.1 405B, Qwen 72B, DeepSeek R1 | Cheap | Many open models |
+| **Fireworks** | Llama 3.3 70B, Qwen 72B | Cheap | Fast open model hosting |
+| **Ollama** | Any local model | **Free** | Run locally, full privacy |
+
+**Recommended combo:** Groq (free, fast) + DeepSeek (cheap, unfiltered) + xAI (Twitter data) gives good coverage across different training sets.
 
 ---
 

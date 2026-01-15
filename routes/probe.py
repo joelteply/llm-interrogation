@@ -97,6 +97,42 @@ def get_models():
             {"id": "anthropic/claude-3-5-haiku-20241022", "name": "Claude 3.5 Haiku", "provider": "Anthropic"},
         ])
 
+    # Mistral
+    if os.environ.get("MISTRAL_API_KEY"):
+        models.extend([
+            {"id": "mistral/mistral-large-latest", "name": "Mistral Large", "provider": "Mistral"},
+            {"id": "mistral/mistral-small-latest", "name": "Mistral Small", "provider": "Mistral"},
+            {"id": "mistral/open-mistral-nemo", "name": "Mistral Nemo", "provider": "Mistral"},
+        ])
+
+    # Together AI
+    if os.environ.get("TOGETHER_API_KEY"):
+        models.extend([
+            {"id": "together/meta-llama/Llama-3.3-70B-Instruct-Turbo", "name": "Llama 3.3 70B", "provider": "Together"},
+            {"id": "together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo", "name": "Llama 3.1 405B", "provider": "Together"},
+            {"id": "together/Qwen/Qwen2.5-72B-Instruct-Turbo", "name": "Qwen 2.5 72B", "provider": "Together"},
+            {"id": "together/deepseek-ai/DeepSeek-R1", "name": "DeepSeek R1", "provider": "Together"},
+        ])
+
+    # Fireworks
+    if os.environ.get("FIREWORKS_API_KEY"):
+        models.extend([
+            {"id": "fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct", "name": "Llama 3.3 70B", "provider": "Fireworks"},
+            {"id": "fireworks/accounts/fireworks/models/qwen2p5-72b-instruct", "name": "Qwen 2.5 72B", "provider": "Fireworks"},
+        ])
+
+    # Ollama (local)
+    if os.environ.get("OLLAMA_HOST"):
+        try:
+            import requests
+            host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+            resp = requests.get(f"{host}/api/tags", timeout=2)
+            if resp.ok:
+                for m in resp.json().get("models", []):
+                    models.append({"id": f"ollama/{m['name']}", "name": m['name'], "provider": "Ollama"})
+        except:
+            pass
+
     return jsonify(models)
 
 
