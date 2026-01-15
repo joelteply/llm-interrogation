@@ -389,32 +389,40 @@ python app.py
 
 Add any keys you have to `.env`. The app auto-detects available models.
 
-| Provider | Get API Key | Cost |
-|----------|-------------|------|
-| **Groq** | [console.groq.com](https://console.groq.com) | Free |
-| **DeepSeek** | [platform.deepseek.com](https://platform.deepseek.com) | ~$0.14/M tokens |
-| **xAI** | [console.x.ai](https://console.x.ai) | $2/M tokens |
-| **OpenAI** | [platform.openai.com](https://platform.openai.com) | $2.50-10/M tokens |
-| **Anthropic** | [console.anthropic.com](https://console.anthropic.com) | $3-15/M tokens |
-| **Mistral** | [console.mistral.ai](https://console.mistral.ai) | ~$0.25/M tokens |
-| **Together** | [api.together.xyz](https://api.together.xyz) | ~$0.20/M tokens |
-| **Fireworks** | [fireworks.ai](https://fireworks.ai) | ~$0.20/M tokens |
-| **Ollama** | [ollama.ai](https://ollama.ai) | Free (local) |
-
 ```bash
 # .env - add any/all of these
-GROQ_API_KEY=gsk_...
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-XAI_API_KEY=xai-...
-DEEPSEEK_API_KEY=sk-...
-TOGETHER_API_KEY=...
-MISTRAL_API_KEY=...
-FIREWORKS_API_KEY=...
-OLLAMA_HOST=http://localhost:11434
+
+# FREE TIER
+GROQ_API_KEY=            # Free - console.groq.com - Llama, Mixtral, Gemma
+GOOGLE_API_KEY=          # Free tier - aistudio.google.com - Gemini 2.5
+
+# CHEAP (< $1/M tokens)
+DEEPSEEK_API_KEY=        # $0.14/M - platform.deepseek.com - DeepSeek R1, Chat
+MISTRAL_API_KEY=         # $0.25/M - console.mistral.ai - Mistral Large/Small
+TOGETHER_API_KEY=        # $0.20/M - api.together.xyz - Llama, Qwen, DeepSeek
+FIREWORKS_API_KEY=       # $0.20/M - fireworks.ai - Fast open models
+DEEPINFRA_API_KEY=       # $0.20/M - deepinfra.com - 100+ open models
+COHERE_API_KEY=          # $0.50/M - dashboard.cohere.com - Command R
+
+# PREMIUM
+XAI_API_KEY=             # $2/M - console.x.ai - Grok (trained on Twitter/X)
+OPENAI_API_KEY=          # $2.50/M - platform.openai.com - GPT-4o, GPT-4
+ANTHROPIC_API_KEY=       # $3/M - console.anthropic.com - Claude Sonnet/Haiku
+
+# AGGREGATORS (access 300+ models with one key)
+OPENROUTER_API_KEY=      # Varies - openrouter.ai - All models, one API
+
+# LOCAL (free, private)
+OLLAMA_HOST=http://localhost:11434  # ollama.ai - Run any model locally
 ```
 
-More keys = more models to cross-validate. But one free Groq key is enough to start.
+More keys = more models to cross-validate. Different providers have different training data - that's the point.
+
+**Recommended for interrogation:**
+- **Groq** (free) - Fast, good baseline
+- **DeepSeek** (cheap) - Less filtered, will talk
+- **xAI** (paid) - Has Twitter/X data others don't
+- **OpenRouter** - Access everything with one key
 
 ---
 
@@ -422,19 +430,23 @@ More keys = more models to cross-validate. But one free Groq key is enough to st
 
 Models are auto-detected based on which API keys you provide.
 
-| Provider | Models | Cost | Notes |
-|----------|--------|------|-------|
-| **Groq** | Llama 3.3 70B, Llama 3.1 8B/70B, Mixtral, Gemma, Qwen | **Free** | Fast inference, great for testing |
-| **DeepSeek** | DeepSeek Chat, DeepSeek R1 | Cheap | Less filtered, good reasoning |
-| **xAI** | Grok 2, Grok 3 | Paid | Trained on Twitter/X data |
-| **OpenAI** | GPT-4o, GPT-4 Turbo, GPT-3.5 | Paid | Different training pipeline |
-| **Anthropic** | Claude Sonnet 4, Claude 3.5 Haiku | Paid | Strong reasoning, more guarded |
-| **Mistral** | Mistral Large, Mistral Small, Nemo | Cheap | European training data |
-| **Together** | Llama 3.3 70B, Llama 3.1 405B, Qwen 72B, DeepSeek R1 | Cheap | Many open models |
-| **Fireworks** | Llama 3.3 70B, Qwen 72B | Cheap | Fast open model hosting |
-| **Ollama** | Any local model | **Free** | Run locally, full privacy |
+| Provider | Models | Why Use It |
+|----------|--------|------------|
+| **Groq** | Llama 3.3, Mixtral, Gemma, Qwen | Free, fast - good starting point |
+| **Google** | Gemini 2.5 Flash/Pro | Free tier, different training data |
+| **DeepSeek** | DeepSeek R1, Chat | Cheap, less filtered, will talk |
+| **Mistral** | Large, Small, Nemo | European training data |
+| **Together** | Llama 3.1 405B, Qwen 72B | Access to largest open models |
+| **Fireworks** | Llama 3.3, Qwen | Fast inference |
+| **DeepInfra** | 100+ models | Cheap access to everything |
+| **Cohere** | Command R+ | Different training approach |
+| **xAI** | Grok 2, Grok 3 | Trained on Twitter/X - unique data |
+| **OpenAI** | GPT-4o, GPT-4 | Different training pipeline |
+| **Anthropic** | Claude Sonnet, Haiku | Strong reasoning, more guarded |
+| **OpenRouter** | 300+ models | One API key for everything |
+| **Ollama** | Any local model | Free, private, offline |
 
-**Recommended combo:** Groq (free, fast) + DeepSeek (cheap, unfiltered) + xAI (Twitter data) gives good coverage across different training sets.
+**Why multiple providers matter:** Each model has different training data. GPT-4 might refuse while Llama talks. Grok has Twitter data others don't. Cross-validation across providers = stronger signal.
 
 ---
 

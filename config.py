@@ -290,6 +290,10 @@ def _get_cached_client(provider: str):
         client = OpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.environ.get("GOOGLE_API_KEY"))
     elif provider == "cohere":
         client = OpenAI(base_url="https://api.cohere.ai/v1", api_key=os.environ.get("COHERE_API_KEY"))
+    elif provider == "deepinfra":
+        client = OpenAI(base_url="https://api.deepinfra.com/v1/openai", api_key=os.environ.get("DEEPINFRA_API_KEY"))
+    elif provider == "openrouter":
+        client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.environ.get("OPENROUTER_API_KEY"))
     elif provider == "ollama":
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         client = OpenAI(base_url=f"{host}/v1", api_key="ollama")

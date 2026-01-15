@@ -121,6 +121,42 @@ def get_models():
             {"id": "fireworks/accounts/fireworks/models/qwen2p5-72b-instruct", "name": "Qwen 2.5 72B", "provider": "Fireworks"},
         ])
 
+    # Google Gemini
+    if os.environ.get("GOOGLE_API_KEY"):
+        models.extend([
+            {"id": "google/gemini-2.5-flash", "name": "Gemini 2.5 Flash", "provider": "Google"},
+            {"id": "google/gemini-2.5-pro", "name": "Gemini 2.5 Pro", "provider": "Google"},
+            {"id": "google/gemini-2.0-flash", "name": "Gemini 2.0 Flash", "provider": "Google"},
+        ])
+
+    # DeepInfra
+    if os.environ.get("DEEPINFRA_API_KEY"):
+        models.extend([
+            {"id": "deepinfra/meta-llama/Llama-3.3-70B-Instruct", "name": "Llama 3.3 70B", "provider": "DeepInfra"},
+            {"id": "deepinfra/Qwen/Qwen2.5-72B-Instruct", "name": "Qwen 2.5 72B", "provider": "DeepInfra"},
+            {"id": "deepinfra/deepseek-ai/DeepSeek-R1", "name": "DeepSeek R1", "provider": "DeepInfra"},
+            {"id": "deepinfra/microsoft/phi-4", "name": "Phi-4", "provider": "DeepInfra"},
+        ])
+
+    # Cohere
+    if os.environ.get("COHERE_API_KEY"):
+        models.extend([
+            {"id": "cohere/command-r-plus", "name": "Command R+", "provider": "Cohere"},
+            {"id": "cohere/command-r", "name": "Command R", "provider": "Cohere"},
+            {"id": "cohere/command-r7b-12-2024", "name": "Command R7B", "provider": "Cohere"},
+        ])
+
+    # OpenRouter (aggregator - access to 300+ models)
+    if os.environ.get("OPENROUTER_API_KEY"):
+        models.extend([
+            {"id": "openrouter/anthropic/claude-sonnet-4", "name": "Claude Sonnet 4 (OR)", "provider": "OpenRouter"},
+            {"id": "openrouter/google/gemini-2.5-pro", "name": "Gemini 2.5 Pro (OR)", "provider": "OpenRouter"},
+            {"id": "openrouter/openai/gpt-4o", "name": "GPT-4o (OR)", "provider": "OpenRouter"},
+            {"id": "openrouter/meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B (OR)", "provider": "OpenRouter"},
+            {"id": "openrouter/deepseek/deepseek-r1", "name": "DeepSeek R1 (OR)", "provider": "OpenRouter"},
+            {"id": "openrouter/x-ai/grok-3", "name": "Grok 3 (OR)", "provider": "OpenRouter"},
+        ])
+
     # Ollama (local)
     if os.environ.get("OLLAMA_HOST"):
         try:
