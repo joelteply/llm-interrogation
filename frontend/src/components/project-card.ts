@@ -21,8 +21,8 @@ export class ProjectCard extends LitElement {
     .card {
       background: linear-gradient(145deg, #161b22 0%, #0d1117 100%);
       border: 2px solid #30363d;
-      border-radius: 24px;
-      padding: 32px;
+      border-radius: 20px;
+      padding: 24px;
       cursor: pointer;
       transition: all 300ms ease;
       display: flex;
@@ -39,7 +39,7 @@ export class ProjectCard extends LitElement {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
       position: relative;
     }
 
@@ -87,13 +87,14 @@ export class ProjectCard extends LitElement {
     }
 
     .topic {
-      font-size: 28px;
-      font-weight: 700;
-      color: #f0f6fc;
-      line-height: 1.2;
-      background: linear-gradient(135deg, #f0f6fc 0%, #c9d1d9 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      font-size: 14px;
+      font-weight: 400;
+      color: #c9d1d9;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
 
     .stats-badge {
@@ -119,9 +120,9 @@ export class ProjectCard extends LitElement {
     }
 
     .cloud-area {
-      height: 350px;
-      margin-bottom: 24px;
-      border-radius: 16px;
+      height: 280px;
+      margin-bottom: 16px;
+      border-radius: 12px;
       overflow: hidden;
       border: 1px solid #21262d;
     }
@@ -129,16 +130,16 @@ export class ProjectCard extends LitElement {
     .signals-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
+      gap: 8px;
     }
 
     .signal {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 16px;
+      gap: 10px;
+      padding: 10px 12px;
       background: rgba(255, 255, 255, 0.02);
-      border-radius: 12px;
+      border-radius: 8px;
       border: 1px solid #21262d;
     }
 
@@ -148,8 +149,8 @@ export class ProjectCard extends LitElement {
     }
 
     .dot {
-      width: 12px;
-      height: 12px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
       flex-shrink: 0;
     }
@@ -169,8 +170,8 @@ export class ProjectCard extends LitElement {
 
     .signal-name {
       flex: 1;
-      font-size: 16px;
-      font-weight: 600;
+      font-size: 13px;
+      font-weight: 500;
       color: #f0f6fc;
       white-space: nowrap;
       overflow: hidden;
@@ -178,43 +179,43 @@ export class ProjectCard extends LitElement {
     }
 
     .signal-count {
-      font-size: 18px;
-      font-weight: 700;
+      font-size: 13px;
+      font-weight: 600;
       color: #8b949e;
     }
 
     .empty {
-      min-height: 300px;
+      min-height: 200px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       color: #6e7681;
-      font-size: 18px;
+      font-size: 16px;
       border: 2px dashed #30363d;
-      border-radius: 16px;
-      margin: 24px 0;
+      border-radius: 12px;
+      margin: 16px 0;
     }
 
     .empty-icon {
-      font-size: 48px;
-      margin-bottom: 16px;
+      font-size: 36px;
+      margin-bottom: 12px;
       opacity: 0.5;
     }
 
     .actions {
       display: flex;
-      gap: 12px;
-      margin-top: 24px;
-      padding-top: 24px;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 16px;
       border-top: 1px solid #21262d;
     }
 
     .action-btn {
       flex: 1;
-      padding: 14px 20px;
-      border-radius: 12px;
-      font-size: 14px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       transition: all 200ms;
@@ -222,7 +223,7 @@ export class ProjectCard extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: 6px;
     }
 
     .action-btn.primary {
@@ -249,10 +250,10 @@ export class ProjectCard extends LitElement {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-top: 16px;
-      padding-top: 16px;
+      margin-top: 12px;
+      padding-top: 12px;
       border-top: 1px solid #21262d;
-      font-size: 13px;
+      font-size: 12px;
       color: #6e7681;
     }
 
@@ -271,9 +272,9 @@ export class ProjectCard extends LitElement {
     .narrative-section {
       background: rgba(63, 185, 80, 0.08);
       border: 1px solid rgba(63, 185, 80, 0.2);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 20px;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
     }
 
     .narrative-label {
@@ -302,9 +303,9 @@ export class ProjectCard extends LitElement {
     .questions-section {
       background: rgba(88, 166, 255, 0.08);
       border: 1px solid rgba(88, 166, 255, 0.2);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 20px;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
     }
 
     .questions-label {
