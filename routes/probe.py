@@ -388,38 +388,11 @@ def run_probe():
             yield f"data: {json.dumps({'type': 'status', 'message': f'Starting probe with {len(models)} models: {models[:3]}...'})}\n\n"
             yield f"data: {json.dumps({'type': 'init', 'models_received': models, 'auto_survey': auto_survey})}\n\n"
 
-            # RESEARCH PHASE: Gather context from DocumentCloud, web, cached docs
+            # RESEARCH: Load cached if available, but never block startup
             research_context = ""
-            print(f"[PROBE] Research phase: project_name={project_name}, topic={topic[:50] if topic else None}")
-            if project_name and topic:
-                try:
-                    from routes.analyze.research import research
-                    print(f"[PROBE] Starting research for '{topic[:30]}...'")
-                    yield f"data: {json.dumps({'type': 'phase', 'phase': 'research', 'message': f'Researching \"{topic}\"...'})}\n\n"
-
-                    result = research(
-                        query=topic,
-                        project_name=project_name,
-                        sources=['documentcloud', 'web'],
-                        max_per_source=8
-                    )
-                    print(f"[PROBE] Research returned: {len(result.documents)} docs, sources={result.sources_used}")
-
-                    if result.documents:
-                        yield f"data: {json.dumps({'type': 'research_complete', 'sources_used': result.sources_used, 'documents_found': len(result.documents), 'cached': result.cached_count, 'fetched': result.fetched_count})}\n\n"
-                        research_context = result.raw_content
-                        print(f"[PROBE] Research found {len(result.documents)} docs from {result.sources_used}")
-
-                        # Save research_context to project for persistence across cycles
-                        if storage.project_exists(project_name):
-                            proj_data = storage.load_project_meta(project_name)
-                            proj_data["research_context"] = research_context
-                            storage.save_project_meta(project_name, proj_data)
-                    else:
-                        yield f"data: {json.dumps({'type': 'status', 'message': 'No research documents found'})}\n\n"
-                except Exception as research_err:
-                    print(f"[PROBE] Research phase error: {research_err}")
-                    yield f"data: {json.dumps({'type': 'warning', 'message': f'Research skipped: {str(research_err)[:50]}'})}\n\n"
+            if project_name and storage.project_exists(project_name):
+                proj_data = storage.load_project_meta(project_name)
+                research_context = proj_data.get("research_context", "")
 
             # AUTO-SURVEY PHASE: Sample ALL models to find which have data
             # SKIP if user explicitly selected models
