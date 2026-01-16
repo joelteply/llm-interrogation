@@ -575,18 +575,11 @@ Return JSON only:
                     for q in question_results:
                         question_results[q]["entities"] = list(question_results[q]["entities"])
 
-                # Fetch web leads if not cached or periodically refresh
-                if not saved_web_leads or len(recent_questions) % 10 == 0:
-                    yield f"data: {json.dumps({'type': 'status', 'message': 'Searching web for new angles...'})}\n\n"
-                    known_entities = list(findings.entity_counts.keys())[:20] if findings.entity_counts else []
-                    web_leads_result = search_new_angles(topic, known_entities)
-                    if "error" not in web_leads_result:
-                        saved_web_leads = web_leads_result
-                        # Save to project metadata
-                        if project_name and storage.project_exists(project_name):
-                            proj_data = storage.load_project_meta(project_name)
-                            proj_data["web_leads"] = saved_web_leads
-                            storage.save_project_meta(project_name, proj_data)
+                # Web leads: use cached only, don't block with web search
+                # (web search can run async in background worker later)
+                if not saved_web_leads and project_name and storage.project_exists(project_name):
+                    proj_data = storage.load_project_meta(project_name)
+                    saved_web_leads = proj_data.get("web_leads", {})
 
                 context = format_interrogator_context(
                     findings, negative_entities, positive_entities,
@@ -1246,48 +1239,17 @@ ANALYSIS: [Your analysis of what these discovered entities reveal - patterns, co
                     except Exception as e:
                         yield f"data: {json.dumps({'type': 'warning', 'message': f'Failed to load project state: {e}'})}\n\n"
 
-                # Refresh web leads and verify entities periodically (every 5 batches)
-                if batch_num % 3 == 0:
-                    # Web search for new angles
-                    yield f"data: {json.dumps({'type': 'status', 'message': 'Refreshing web search for new angles...'})}\n\n"
-                    known_entities = list(findings.entity_counts.keys())[:20] if findings.entity_counts else []
-                    web_leads_result = search_new_angles(topic, known_entities)
-                    if "error" not in web_leads_result:
-                        batch_web_leads = web_leads_result
-                        # Save to project metadata
-                        if project_name and storage.project_exists(project_name):
-                            try:
-                                with get_project_lock():
-                                    proj_data = storage.load_project_meta(project_name)
-                                    proj_data["web_leads"] = batch_web_leads
-                                    storage.save_project_meta(project_name, proj_data)
-                            except Exception:
-                                pass  # Non-critical, continue
-
-                    # Verify entities against web (PUBLIC vs PRIVATE)
-                    if len(findings.entity_counts) >= 5:
-                        yield f"data: {json.dumps({'type': 'status', 'message': 'Verifying entities against public web...'})}\n\n"
-                        top_entities = [e for e, s, f in findings.scored_entities[:15]]
-                        verification_result = verify_entities(top_entities, topic, max_entities=15)
-                        if "error" not in verification_result:
-                            # Send to frontend
-                            yield f"data: {json.dumps({'type': 'entity_verification', 'data': verification_result})}\n\n"
-                            # Save to project metadata
-                            if project_name and storage.project_exists(project_name):
-                                try:
-                                    with get_project_lock():
-                                        proj_data = storage.load_project_meta(project_name)
-                                        proj_data["entity_verification"] = verification_result
-                                        storage.save_project_meta(project_name, proj_data)
-                                except Exception:
-                                    pass  # Non-critical, continue
-
-                    # Research: fetch new docs for PRIVATE entities
-                    yield f"data: {json.dumps({'type': 'status', 'message': 'Researching discovered entities...'})}\n\n"
-                    research_result = run_periodic_research(project_name, topic, findings)
-                    if research_result["fetched_count"] > 0:
-                        msg = f"Research: cached {research_result['fetched_count']} new documents"
-                        yield f"data: {json.dumps({'type': 'status', 'message': msg})}\n\n"
+                # Load cached web leads and verification (no blocking calls)
+                # Research/verification runs in background worker, not here
+                if batch_num % 3 == 0 and project_name and storage.project_exists(project_name):
+                    try:
+                        proj_data = storage.load_project_meta(project_name)
+                        batch_web_leads = proj_data.get("web_leads", {})
+                        cached_verification = proj_data.get("entity_verification", {})
+                        if cached_verification:
+                            yield f"data: {json.dumps({'type': 'entity_verification', 'data': cached_verification})}\n\n"
+                    except Exception:
+                        pass
 
                 updated_narrative = current_narrative
 
