@@ -666,6 +666,7 @@ export class ProjectView extends LitElement {
     if (!this.projectName) return;
 
     this.isLoading = true;
+    this.loadError = null;
 
     // CRITICAL: Reset state before loading new project to prevent cross-project leakage
     // BUT preserve the autostart flag so new projects can start automatically
@@ -744,10 +745,14 @@ export class ProjectView extends LitElement {
       }
     } catch (err) {
       console.error('Failed to load project:', err);
+      this.loadError = err instanceof Error ? err.message : 'Failed to load project';
     } finally {
       this.isLoading = false;
     }
   }
+
+  @state()
+  private loadError: string | null = null;
 
   @state()
   private showConfig = false;
@@ -1096,6 +1101,16 @@ export class ProjectView extends LitElement {
   render() {
     if (this.isLoading) {
       return html`<div class="loading">Loading...</div>`;
+    }
+
+    if (this.loadError) {
+      return html`
+        <div class="loading">
+          <div>Error: ${this.loadError}</div>
+          <button @click=${() => { this.loadError = null; this.loadProject(); }}>Retry</button>
+          <button @click=${() => navigateTo('projects')}>← Back</button>
+        </div>
+      `;
     }
 
     if (!this.project) {
