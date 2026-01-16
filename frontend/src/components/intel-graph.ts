@@ -1061,7 +1061,7 @@ export class IntelGraph extends LitElement {
           <button
             @click=${() => this.showControls = !this.showControls}
             style="width: 100%; padding: 6px 10px; background: transparent; border: none; color: #58a6ff; cursor: pointer; text-align: left; font-size: 10px;">
-            ${this.showControls ? '▼' : '▶'} Physics ${Math.min(this.width, this.height).toFixed(0)}px
+            ${this.showControls ? '▼' : '▶'} Physics ${(Math.min(this.width || 0, this.height || 0)).toFixed(0)}px
           </button>
           ${this.showControls ? html`
             <div style="padding: 8px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;">
@@ -1078,13 +1078,13 @@ export class IntelGraph extends LitElement {
                   style="width: 80px;">
               </div>
               <div>
-                <label>Center: ${(this.centerPull * 1000).toFixed(1)}</label><br>
+                <label>Center: ${((this.centerPull || 0) * 1000).toFixed(1)}</label><br>
                 <input type="range" min="0" max="20" step="0.5" .value=${this.centerPull * 1000}
                   @input=${(e: Event) => this.centerPull = +(e.target as HTMLInputElement).value / 1000}
                   style="width: 80px;">
               </div>
               <div>
-                <label>Repel: ${(this.repulsion * 100).toFixed(0)}</label><br>
+                <label>Repel: ${((this.repulsion || 0) * 100).toFixed(0)}</label><br>
                 <input type="range" min="1" max="30" .value=${this.repulsion * 100}
                   @input=${(e: Event) => this.repulsion = +(e.target as HTMLInputElement).value / 100}
                   style="width: 80px;">
@@ -1102,7 +1102,7 @@ export class IntelGraph extends LitElement {
                   style="width: 80px;">
               </div>
               <div>
-                <label>Damping: ${(this.damping * 100).toFixed(0)}%</label><br>
+                <label>Damping: ${((this.damping || 0) * 100).toFixed(0)}%</label><br>
                 <input type="range" min="50" max="99" .value=${this.damping * 100}
                   @input=${(e: Event) => this.damping = +(e.target as HTMLInputElement).value / 100}
                   style="width: 80px;">
@@ -1156,7 +1156,7 @@ export class IntelGraph extends LitElement {
 
             <div class="stat">
               <span>Confidence</span>
-              <span class="stat-value">${(this.hoveredNode.confidence * 100).toFixed(0)}%</span>
+              <span class="stat-value">${((this.hoveredNode?.confidence ?? 0) * 100).toFixed(0)}%</span>
             </div>
             <div class="stat">
               <span>Sources</span>
@@ -1169,7 +1169,7 @@ export class IntelGraph extends LitElement {
             ${this.hoveredNode.drillTotal !== null ? html`
               <div class="stat">
                 <span>Drill Score</span>
-                <span class="stat-value">${this.hoveredNode.drillTotal.toFixed(0)}/60</span>
+                <span class="stat-value">${this.hoveredNode.drillTotal?.toFixed(0) ?? '?'}/60</span>
               </div>
             ` : ''}
 

@@ -690,6 +690,34 @@ export class WordCloud extends LitElement {
     }));
   }
 
+  // Highlight keyword in context with surrounding text (like Google search results)
+  private highlightKeyword(text: string, keyword: string, contextChars: number = 80) {
+    if (!text || !keyword) return text || '(no context)';
+
+    // Case-insensitive search
+    const lowerText = text.toLowerCase();
+    const lowerKeyword = keyword.toLowerCase();
+    const idx = lowerText.indexOf(lowerKeyword);
+
+    if (idx === -1) {
+      // Keyword not found - return truncated text
+      return text.length > contextChars * 2 ? text.substring(0, contextChars * 2) + '...' : text;
+    }
+
+    // Calculate context bounds
+    const start = Math.max(0, idx - contextChars);
+    const end = Math.min(text.length, idx + keyword.length + contextChars);
+
+    // Extract parts
+    const prefix = start > 0 ? '...' : '';
+    const suffix = end < text.length ? '...' : '';
+    const before = text.substring(start, idx);
+    const match = text.substring(idx, idx + keyword.length);
+    const after = text.substring(idx + keyword.length, end);
+
+    return html`${prefix}${before}<strong style="color: #f0f6fc; background: rgba(88, 166, 255, 0.2); padding: 0 2px; border-radius: 2px;">${match}</strong>${after}${suffix}`;
+  }
+
   private renderHoverPopup() {
     if (!this.hoveredWord) return null;
 
@@ -736,7 +764,7 @@ export class WordCloud extends LitElement {
                   <span class="hover-match-model">${m.model.split('/').pop()}</span>
                 </div>
                 <div class="hover-match-question">"${m.question}"</div>
-                <div class="hover-match-context">${m.context || '(no context)'}</div>
+                <div class="hover-match-context">${this.highlightKeyword(m.context, this.hoveredWord!)}</div>
               </div>
             `)}
           ` : html`
@@ -753,7 +781,7 @@ export class WordCloud extends LitElement {
                 <div class="hover-match-header">
                   <span class="hover-match-model" style="font-size: 10px;">${m.model.split('/').pop()}</span>
                 </div>
-                <div class="hover-match-context" style="font-size: 10px;">${m.context?.substring(0, 60) || '...'}</div>
+                <div class="hover-match-context" style="font-size: 10px;">${this.highlightKeyword(m.context, this.hoveredWord!, 40)}</div>
               </div>
             `)}
             ${echoes.length > 2 ? html`<div style="color: #6e7681; font-size: 10px;">...and ${echoes.length - 2} more echoes</div>` : null}

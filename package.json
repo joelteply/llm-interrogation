@@ -10,7 +10,10 @@
     "backend": "./venv/bin/python app.py",
     "frontend:dev": "npm run dev -w frontend",
     "build": "npm run build -w frontend",
-    "open": "sleep 1 && (open http://localhost:5001 || xdg-open http://localhost:5001 || start http://localhost:5001)"
+    "open": "sleep 1 && (open http://localhost:5001 || xdg-open http://localhost:5001 || start http://localhost:5001)",
+    "test": "./venv/bin/python -m pytest tests/ -v",
+    "test:fast": "./venv/bin/python -m pytest tests/ -v -m 'not integration'",
+    "test:all": "./venv/bin/python -m pytest tests/ -v --tb=short"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"

@@ -1098,34 +1098,77 @@ Each question MUST contain at least one entity name from above."""
                                 yield f"data: {json.dumps({'type': 'run_start', 'question_index': highest_completed_q_idx + 1})}\n\n"
 
                             responses_since_synth += 1
-                            print(f"[PROBE] Response #{responses_since_synth}, scored_entities={len(findings.scored_entities) if findings.scored_entities else 0}")
+                            se_count = len(findings.scored_entities) if findings.scored_entities else 0
+                            print(f"[PROBE] Response #{responses_since_synth}, scored_entities={se_count}")
 
-                            # Trigger synthesis periodically - every 20 responses via centralized synthesis
-                            if responses_since_synth >= 20 and project_name and findings.scored_entities and len(findings.scored_entities) >= 3:
+                            # Trigger synthesis periodically - every 10 responses via centralized synthesis
+                            synth_ready = responses_since_synth >= 10 and project_name and se_count >= 3
+                            if responses_since_synth >= 10:
+                                print(f"[PROBE] SYNTH CHECK: responses={responses_since_synth}, project={project_name}, entities={se_count}, ready={synth_ready}")
+                            if synth_ready:
                                 responses_since_synth = 0
-                                from routes.synthesis import synthesize_narrative as do_synth
+                                print(f"[PROBE] *** STARTING INLINE SYNTHESIS ***")
 
-                                # Get research context for synthesis
-                                research_for_synth = ""
-                                if project_name:
-                                    try:
-                                        from routes.analyze.research import query_research
-                                        top_ents = [e for e, _, _ in list(findings.scored_entities[:5])]
-                                        research_for_synth = query_research(top_ents, project_name, max_results=2)[:1500]
-                                    except:
-                                        pass
+                                try:
+                                    from config import get_client
+                                    from datetime import datetime as dt
 
-                                # Run centralized synthesis (has its own locking)
-                                narrative = do_synth(
-                                    project_name=project_name,
-                                    topic=topic,
-                                    entities=list(findings.scored_entities[:15]),
-                                    research_context=research_for_synth
-                                )
+                                    # Get top entities as strings
+                                    top_ents = [e for e, _, _ in list(findings.scored_entities[:15])]
+                                    ent_str = ", ".join(f"{e}" for e in top_ents[:10])
 
-                                if narrative:
-                                    print(f"[PROBE] *** SYNTH SUCCESS *** ({len(narrative)} chars)")
-                                    yield f"data: {json.dumps({'type': 'narrative', 'text': narrative})}\n\n"
+                                    # Synthesis prompt - emphasize PRIVATE/non-public findings
+                                    prompt = f"""You are analyzing intelligence extracted from LLM training data about: {topic}
+
+ENTITIES SURFACED (by frequency):
+{ent_str}
+
+Write an intelligence briefing in this format:
+
+HEADLINE: [Catchy 5-10 word headline about the key finding]
+
+SUBHEAD: [1-2 sentences highlighting the most NOTEWORTHY discoveries - focus on private/non-public information, insider details, or connections that wouldn't be found in a simple web search]
+
+ANALYSIS: [Your analysis of what these entities reveal - patterns, connections, implications. Prioritize anything that appears to be leaked, insider, or private knowledge over publicly known facts.]"""
+
+                                    # Try synthesis with first available model
+                                    synth_models = ["groq/llama-3.3-70b-versatile", "groq/llama-3.1-8b-instant", "deepseek/deepseek-chat"]
+                                    narrative = None
+
+                                    for model in synth_models:
+                                        try:
+                                            client, cfg = get_client(model)
+                                            resp = client.chat.completions.create(
+                                                model=cfg["model"],
+                                                messages=[{"role": "user", "content": prompt}],
+                                                temperature=0.4,
+                                                max_tokens=2000
+                                            )
+                                            narrative = resp.choices[0].message.content.strip()
+                                            if narrative and not is_refusal(narrative):
+                                                print(f"[PROBE] *** SYNTH SUCCESS via {model} *** ({len(narrative)} chars)")
+                                                break
+                                            narrative = None
+                                        except Exception as model_err:
+                                            print(f"[PROBE] Synth model {model} failed: {model_err}")
+                                            continue
+
+                                    if narrative:
+                                        yield f"data: {json.dumps({'type': 'narrative', 'text': narrative})}\n\n"
+                                        # Save to project
+                                        if project_name and storage.project_exists(project_name):
+                                            proj = storage.load_project_meta(project_name)
+                                            proj["narrative"] = narrative
+                                            proj["working_theory"] = narrative
+                                            proj["narrative_updated"] = dt.now().isoformat()
+                                            storage.save_project_meta(project_name, proj)
+                                    else:
+                                        print(f"[PROBE] All synth models failed")
+
+                                except Exception as synth_err:
+                                    print(f"[PROBE] Synthesis error: {synth_err}")
+                                    import traceback
+                                    traceback.print_exc()
 
                             # Incremental save - append to corpus JSONL (thread-safe)
                             if project_name and storage.project_exists(project_name):

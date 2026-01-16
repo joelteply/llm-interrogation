@@ -916,23 +916,28 @@ export class ResponseStream extends LitElement {
     return `${Math.floor(hours / 24)}d ago`;
   }
 
-  private extractHeadline(narrative: string): { headline: string; subhead: string } {
-    if (!narrative) return { headline: 'No theory generated yet', subhead: 'Run the probe to build one.' };
+  private extractHeadline(narrative: string): { headline: string; subhead: string; analysis: string } {
+    if (!narrative) return { headline: 'No theory generated yet', subhead: 'Run the probe to build one.', analysis: '' };
 
-    // Try to parse structured HEADLINE/SUBHEAD format
+    // Try to parse structured HEADLINE/SUBHEAD/ANALYSIS format
     const headlineMatch = narrative.match(/HEADLINE:?\s*\n?([^\n]+)/i);
-    // Capture subhead until next section (CLAIMS, NEXT, etc) or double newline
-    const subheadMatch = narrative.match(/SUBHEAD:?\s*\n?([\s\S]*?)(?=\n\n|\nCLAIMS|\nNEXT|\nKEY|\n#|$)/i);
+    // Capture subhead until ANALYSIS section or double newline
+    const subheadMatch = narrative.match(/SUBHEAD:?\s*\n?([\s\S]*?)(?=\n\n|\nANALYSIS|\nCLAIMS|\nNEXT|\nKEY|\n#|$)/i);
+    // Capture analysis section
+    const analysisMatch = narrative.match(/ANALYSIS:?\s*\n?([\s\S]*?)$/i);
 
     if (headlineMatch) {
       const headline = headlineMatch[1].trim().replace(/^\[|\]$/g, '').replace(/^\*+|\*+$/g, '');
       const subhead = subheadMatch
         ? subheadMatch[1].trim().replace(/^\[|\]$/g, '').replace(/^\*+|\*+$/g, '')
         : '';
-      return { headline, subhead };
+      const analysis = analysisMatch
+        ? analysisMatch[1].trim()
+        : '';
+      return { headline, subhead, analysis };
     }
 
-    // Fallback: extract from content using scoring
+    // Fallback: extract headline from first good line, subhead from rest
     const skipPatterns = [
       /list specific/i, /your task/i, /format:/i, /output/i,
       /be specific/i, /extract/i, /analyze/i, /cross-reference/i,
@@ -943,15 +948,31 @@ export class ResponseStream extends LitElement {
     ];
 
     const lines = narrative.split('\n');
-    for (const line of lines) {
-      let content = line.trim().replace(/\*\*/g, '').replace(/^[•\-\*]\s*/, '').replace(/^#+\s*/, '');
+    for (let i = 0; i < lines.length; i++) {
+      let content = lines[i].trim().replace(/\*\*/g, '').replace(/^[•\-\*]\s*/, '').replace(/^#+\s*/, '');
       // Skip headers, short lines, lines ending with colon
       if (content.length > 25 && !content.endsWith(':') && !content.startsWith('#') && !skipPatterns.some(p => p.test(content))) {
-        return { headline: content.substring(0, 150), subhead: '' };
+        // Check if this line has a sentence ending
+        const sentenceEnd = content.search(/[.!?]\s|[.!?]$/);
+        if (sentenceEnd > 30) {
+          // Line has sentence - split it
+          const headline = content.substring(0, sentenceEnd + 1);
+          const restOfLine = content.substring(sentenceEnd + 1).trim();
+          const remaining = lines.slice(i + 1).map(l => l.trim()).filter(l => l.length > 0).join('\n');
+          const subhead = restOfLine || remaining.substring(0, 300);
+          return { headline, subhead, analysis: remaining };
+        }
+        // No sentence in this line - use it as headline, grab next content as subhead/analysis
+        const remaining = lines.slice(i + 1)
+          .map(l => l.trim())
+          .filter(l => l.length > 0)
+          .join('\n');
+        const subhead = remaining.substring(0, 300);
+        return { headline: content, subhead, analysis: remaining };
       }
     }
 
-    return { headline: 'Analyzing findings...', subhead: '' };
+    return { headline: 'Analyzing findings...', subhead: '', analysis: '' };
   }
 
   private groupResponsesByQuestion(responses: ProbeResponse[]): Map<number, ProbeResponse[]> {
@@ -1104,20 +1125,22 @@ export class ResponseStream extends LitElement {
                 </button>
               </div>
               ${(() => {
-                const { headline, subhead } = this.extractHeadline(this._probeState.narrative);
+                const { headline, subhead, analysis } = this.extractHeadline(this._probeState.narrative);
                 return this.theoryExpanded ? html`
                   <div class="narrative-headline" style="font-size: 18px; font-weight: 700; color: #3fb950; line-height: 1.3; margin-bottom: 8px;">
                     ${headline}
                   </div>
-                  ${subhead ? html`<div style="font-size: 14px; color: #c9d1d9; line-height: 1.5; margin-bottom: 12px; white-space: pre-wrap;">${subhead}</div>` : ''}
-                  <div class="narrative-content" style="cursor: default; border-top: 1px solid #30363d; padding-top: 12px; margin-top: 8px;">
-                    ${this._probeState.narrative || 'No theory generated yet. Run the probe to build one.'}
-                  </div>
+                  ${subhead ? html`<div style="font-size: 14px; color: #c9d1d9; line-height: 1.5; margin-bottom: 12px;">${subhead}</div>` : ''}
+                  ${analysis ? html`
+                    <div class="narrative-content" style="cursor: default; border-top: 1px solid #30363d; padding-top: 12px; margin-top: 8px; font-size: 13px; color: #8b949e; line-height: 1.6; white-space: pre-wrap;">
+                      ${analysis}
+                    </div>
+                  ` : ''}
                 ` : html`
                   <div class="narrative-headline" style="font-size: 18px; font-weight: 700; color: #3fb950; line-height: 1.3;">
                     ${headline}
                   </div>
-                  ${subhead ? html`<div style="font-size: 13px; color: #c9d1d9; line-height: 1.4; margin-top: 8px; white-space: pre-wrap;">${subhead}</div>` : ''}
+                  ${subhead ? html`<div style="font-size: 13px; color: #c9d1d9; line-height: 1.4; margin-top: 8px;">${subhead}</div>` : ''}
                 `;
               })()}
             </div>

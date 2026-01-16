@@ -401,6 +401,14 @@ export class ProjectView extends LitElement {
 
     .run-counter.infinite {
       color: #58a6ff;
+      font-weight: 700;
+    }
+
+    .run-counter .infinity-symbol {
+      font-size: 1.4em;
+      font-weight: 700;
+      vertical-align: middle;
+      margin-left: 1px;
     }
 
     @keyframes pulse-counter {
@@ -919,6 +927,7 @@ export class ProjectView extends LitElement {
         } else if (event.type === 'narrative') {
           // Interrogator's updated working theory
           const text = (event.data as any)?.text || (event as any).text || (event.data as any)?.narrative || (event as any).narrative || '';
+          console.log('[SSE] Narrative event received:', text?.substring(0, 100));
           probeState.update(s => ({ ...s, narrative: text, narrativeUpdated: Date.now() }));
         } else if (event.type === 'error') {
           // Model or API error - log but keep running
@@ -1150,11 +1159,13 @@ export class ProjectView extends LitElement {
             </button>
             <span
               class="run-counter ${isRunning ? 'active' : ''} ${this._probeState.infiniteMode ? 'infinite' : ''}"
-              title="Click to toggle infinite mode. ${this._probeState.selectedModels.length === 0 ? 'Auto-survey mode: will sample all models' : `Models: ${this._probeState.selectedModels.join(', ')}`}"
+              title="${this._probeState.infiniteMode ? 'Infinite mode ON - click to disable' : 'Click to enable infinite mode'}"
               @click=${() => probeState.update(s => ({ ...s, infiniteMode: !s.infiniteMode }))}
               style="cursor: pointer;"
             >
-              ${this._probeState.responses.length}:${this._probeState.infiniteMode ? '∞' : this._probeState.runsPerQuestion * this._probeState.questionCount * Math.max(this._probeState.selectedModels.length, 1)}
+              ${this._probeState.responses.length}:${this._probeState.infiniteMode
+                ? html`<span class="infinity-symbol">∞</span>`
+                : this._probeState.runsPerQuestion * this._probeState.questionCount * Math.max(this._probeState.selectedModels.length, 1)}
             </span>
             <span
               class="toggle-badge ${this._probeState.autoCurate ? 'active' : ''} ${this.isCurating ? 'curating' : ''}"

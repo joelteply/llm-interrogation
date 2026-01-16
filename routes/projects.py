@@ -171,15 +171,24 @@ def get_findings(name):
             in_question = any(w in question_words for w in e_lower.split())
             is_first_mention = not in_context and not in_question
 
-            # Extract context: find sentence containing entity
+            # Extract context: find the entity in the response and get surrounding text
             context = ""
             if response:
-                for sentence in response.replace('\n', '. ').split('. '):
-                    if entity.lower() in sentence.lower():
-                        context = sentence.strip()[:150]
-                        break
-                if not context:
-                    context = response[:100].strip()
+                e_lower = entity.lower()
+                r_lower = response.lower()
+                idx = r_lower.find(e_lower)
+                if idx != -1:
+                    # Found! Extract context around it (80 chars before/after)
+                    start = max(0, idx - 80)
+                    end = min(len(response), idx + len(entity) + 80)
+                    context = response[start:end].strip()
+                    if start > 0:
+                        context = '...' + context
+                    if end < len(response):
+                        context = context + '...'
+                else:
+                    # Entity not found in response - shouldn't happen but fallback
+                    context = response[:150].strip() + '...'
 
             entity_matches[entity].append({
                 "model": model,
