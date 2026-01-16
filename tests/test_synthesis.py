@@ -7,14 +7,108 @@ Tests:
 2. Synthesis prompt generation with findings
 3. Closure behavior in generator context (the bug we hit)
 4. Narrative timestamp formatting
+5. Source term extraction (introduced vs discovered)
 """
 
 import sys
 sys.path.insert(0, '.')
 
 import pytest
-from routes.helpers import is_refusal
+from routes.helpers import is_refusal, extract_source_terms, is_entity_introduced
 from interrogator import Findings
+
+
+class TestSourceTermExtraction:
+    """Test extraction of source terms from user query."""
+
+    def test_basic_word_extraction(self):
+        """Should extract significant words from topic."""
+        topic = "Palantir associations with immigration detention"
+        terms = extract_source_terms(topic)
+
+        assert "palantir" in terms
+        assert "immigration" in terms
+        assert "detention" in terms
+        # Stop words should not be included
+        assert "with" not in terms
+        assert "associations" in terms  # This is a framing term
+
+    def test_country_extraction(self):
+        """Should extract country names."""
+        topic = "Operations in Greenland, Canada, Mexico, Cuba, and Venezuela"
+        terms = extract_source_terms(topic)
+
+        assert "greenland" in terms
+        assert "canada" in terms
+        assert "mexico" in terms
+        assert "cuba" in terms
+        assert "venezuela" in terms
+
+    def test_year_extraction(self):
+        """Should extract years."""
+        topic = "Events from 2026-2030 timeframe"
+        terms = extract_source_terms(topic)
+
+        assert "2026" in terms or "2030" in terms
+
+    def test_complex_query(self):
+        """Should handle the user's actual complex query."""
+        topic = """Palantir associations with mass immigration and detention centers to be built 2026-2030 timeframe along with increased domestic surveillance. Communication between employees which sounded white supremacist or abusive towards groups. Any indications of contracts outside the americas for American conquests in Greenland, Canada, Mexico, Cuba, and Venezuela."""
+
+        terms = extract_source_terms(topic)
+
+        # Key terms should be extracted
+        assert "palantir" in terms
+        assert "immigration" in terms
+        assert "detention" in terms
+        assert "surveillance" in terms
+        assert "greenland" in terms
+        assert "venezuela" in terms
+
+        # Framing terms should be captured
+        assert "contracts" in terms
+        assert "domestic" in terms
+
+
+class TestIsEntityIntroduced:
+    """Test detection of introduced vs discovered entities."""
+
+    def test_direct_match(self):
+        """Entity that exactly matches a source term should be introduced."""
+        source_terms = {"palantir", "immigration", "surveillance"}
+
+        assert is_entity_introduced("Palantir", source_terms) is True
+        assert is_entity_introduced("immigration", source_terms) is True
+
+    def test_partial_match(self):
+        """Entity containing source terms should be introduced."""
+        source_terms = {"surveillance", "detention", "immigration"}
+
+        assert is_entity_introduced("domestic surveillance", source_terms) is True
+        assert is_entity_introduced("immigration detention centers", source_terms) is True
+
+    def test_discovered_entity(self):
+        """Entity NOT in source terms should be discovered."""
+        source_terms = {"palantir", "immigration", "surveillance"}
+
+        assert is_entity_introduced("Project Falcon", source_terms) is False
+        assert is_entity_introduced("John Smith", source_terms) is False
+        assert is_entity_introduced("Acme Corporation", source_terms) is False
+
+    def test_real_scenario(self):
+        """Test with realistic source terms and entities."""
+        topic = "Palantir associations with mass immigration and detention centers"
+        source_terms = extract_source_terms(topic)
+
+        # These should be INTRODUCED (echoed from query)
+        assert is_entity_introduced("Palantir", source_terms) is True
+        assert is_entity_introduced("mass immigration", source_terms) is True
+        assert is_entity_introduced("detention centers", source_terms) is True
+
+        # These should be DISCOVERED (not in query)
+        assert is_entity_introduced("ICE", source_terms) is False
+        assert is_entity_introduced("Project Gotham", source_terms) is False
+        assert is_entity_introduced("Peter Thiel", source_terms) is False
 
 
 class TestIsRefusal:

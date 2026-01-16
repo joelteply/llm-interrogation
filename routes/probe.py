@@ -25,7 +25,8 @@ from .helpers import (
     format_interrogator_context, is_refusal, build_initial_continuations, get_project_models,
     extract_json, get_random_technique, get_technique_info, load_technique_templates, filter_question_echoes,
     get_all_techniques_for_prompt, rephrase_for_indirect, sanitize_for_json,
-    build_novel_findings, verify_entities, select_models_for_round, search_new_angles
+    build_novel_findings, verify_entities, select_models_for_round, search_new_angles,
+    extract_source_terms, is_entity_introduced
 )
 
 
@@ -344,6 +345,11 @@ def run_probe():
     project_name = data.get("project")
     topic = data.get("topic", "")
     print(f"[PROBE] *** TOPIC RECEIVED: '{topic}' ***")
+
+    # Extract source terms from topic to detect introduced vs discovered entities
+    source_terms = extract_source_terms(topic)
+    print(f"[PROBE] Source terms extracted ({len(source_terms)}): {list(source_terms)[:20]}...")
+
     angles = data.get("angles", [])
     models = data.get("models", [])  # Empty = use all available
     auto_survey = data.get("auto_survey", True) if not models else data.get("auto_survey", False)
@@ -949,12 +955,17 @@ Each question MUST contain at least one entity name from above."""
                         refusal = is_refusal(resp_text)
                         if refusal:
                             entities = []  # Don't extract from refusal text
+                            discovered_entities = []
+                            introduced_entities = []
                         else:
                             raw_entities = extract_facts_fast(resp_text)
                             entities = filter_question_echoes(
                                 [e for e in raw_entities if e not in negative_entities],
                                 actual_question
                             )
+                            # Tag entities as INTRODUCED (from user query) vs DISCOVERED (genuine)
+                            discovered_entities = [e for e in entities if not is_entity_introduced(e, source_terms)]
+                            introduced_entities = [e for e in entities if is_entity_introduced(e, source_terms)]
 
                         actual_technique = technique
                         if actual_question != question:
@@ -968,6 +979,8 @@ Each question MUST contain at least one entity name from above."""
                             "model": model_key,
                             "response": resp_text,
                             "entities": entities,
+                            "discovered_entities": discovered_entities,  # Genuine findings
+                            "introduced_entities": introduced_entities,  # Echoed from query
                             "is_refusal": refusal,
                             "adapted": actual_question != question,
                             "thread": thread,
@@ -1050,6 +1063,8 @@ Each question MUST contain at least one entity name from above."""
                             # Emit model_active for UI highlighting
                             yield f"data: {json.dumps({'type': 'model_active', 'model': model_key})}\n\n"
                             entities = result["entities"]
+                            discovered_entities = result.get("discovered_entities", entities)
+                            introduced_entities = result.get("introduced_entities", [])
                             refusal = result["is_refusal"]
                             thread = result["thread"]
 
@@ -1064,15 +1079,16 @@ Each question MUST contain at least one entity name from above."""
                             # Extract entities from question to detect echoes
                             question_ents = set(extract_facts_fast(result["question"]))
                             question_ents.add(topic.lower())  # Topic itself is always "in prompt"
-                            findings.add_response(entities, model_key, refusal, question_entities=question_ents)
+                            # Only add DISCOVERED entities to findings (filter out introduced)
+                            findings.add_response(discovered_entities, model_key, refusal, question_entities=question_ents)
 
                             if model_key not in model_performance:
                                 model_performance[model_key] = {"entities": 0, "refusals": 0, "unique": set(), "queries": 0}
                             model_performance[model_key]["queries"] += 1
-                            model_performance[model_key]["entities"] += len(entities)
+                            model_performance[model_key]["entities"] += len(discovered_entities)  # Count only discovered
                             if refusal:
                                 model_performance[model_key]["refusals"] += 1
-                            model_performance[model_key]["unique"].update(entities)
+                            model_performance[model_key]["unique"].update(discovered_entities)
 
                             if not refusal and thread.assigned_strategy:
                                 thread.advance_strategy()
@@ -1083,7 +1099,9 @@ Each question MUST contain at least one entity name from above."""
                                 "technique": result["technique"],
                                 "model": model_key,
                                 "response": sanitize_for_json(result["response"]),
-                                "entities": entities,
+                                "entities": entities,  # All entities for display
+                                "discovered_entities": discovered_entities,  # Genuine findings
+                                "introduced_entities": introduced_entities,  # Echoed from query
                                 "is_refusal": refusal,
                                 "adapted": result["adapted"],
                             }
@@ -1113,23 +1131,25 @@ Each question MUST contain at least one entity name from above."""
                                     from config import get_client
                                     from datetime import datetime as dt
 
-                                    # Get top entities as strings
+                                    # Get top DISCOVERED entities (filtered - not from user query)
                                     top_ents = [e for e, _, _ in list(findings.scored_entities[:15])]
                                     ent_str = ", ".join(f"{e}" for e in top_ents[:10])
 
-                                    # Synthesis prompt - emphasize PRIVATE/non-public findings
+                                    # Synthesis prompt - emphasize these are DISCOVERED, not introduced
                                     prompt = f"""You are analyzing intelligence extracted from LLM training data about: {topic}
 
-ENTITIES SURFACED (by frequency):
+DISCOVERED ENTITIES (these were NOT in the original query - they are genuine findings):
 {ent_str}
+
+These entities were mentioned by LLMs but were NOT part of the original search query. They represent potential leaked or private information from training data.
 
 Write an intelligence briefing in this format:
 
-HEADLINE: [Catchy 5-10 word headline about the key finding]
+HEADLINE: [Catchy 5-10 word headline about the most significant DISCOVERY]
 
-SUBHEAD: [1-2 sentences highlighting the most NOTEWORTHY discoveries - focus on private/non-public information, insider details, or connections that wouldn't be found in a simple web search]
+SUBHEAD: [1-2 sentences highlighting the most surprising or noteworthy findings - these should be things that weren't asked about but emerged from the data]
 
-ANALYSIS: [Your analysis of what these entities reveal - patterns, connections, implications. Prioritize anything that appears to be leaked, insider, or private knowledge over publicly known facts.]"""
+ANALYSIS: [Your analysis of what these discovered entities reveal - patterns, connections, implications. Focus on what's genuinely new/unexpected, not obvious associations.]"""
 
                                     # Try synthesis with first available model
                                     synth_models = ["groq/llama-3.3-70b-versatile", "groq/llama-3.1-8b-instant", "deepseek/deepseek-chat"]

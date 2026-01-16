@@ -708,6 +708,32 @@ export class ResponseStream extends LitElement {
       color: #8b949e;
       opacity: 0.7;
     }
+
+    .intel-item.introduced {
+      background: rgba(110, 118, 129, 0.08);
+      border-color: rgba(110, 118, 129, 0.2);
+      color: #6e7681;
+      opacity: 0.6;
+      font-weight: 400;
+    }
+
+    .intel-item.introduced::before {
+      content: "↩ ";
+      font-size: 10px;
+      opacity: 0.7;
+    }
+
+    .intel-item.discovered {
+      background: rgba(63, 185, 80, 0.15);
+      border-color: rgba(63, 185, 80, 0.4);
+      color: #3fb950;
+      font-weight: 600;
+    }
+
+    .intel-item.discovered::before {
+      content: "★ ";
+      font-size: 10px;
+    }
   `;
 
   @state()
@@ -1246,13 +1272,29 @@ export class ResponseStream extends LitElement {
                 <div class="response-text ${r.is_refusal ? 'refusal' : ''}">
                   ${r.response}
                 </div>
-                ${r.entities && r.entities.length ? html`
+                ${(r.discovered_entities?.length || r.introduced_entities?.length || r.entities?.length) ? html`
                   <div class="extracted-intel">
-                    <span class="intel-label">Extracted:</span>
-                    ${r.entities.slice(0, 8).map((e: string) => html`
-                      <span class="intel-item ${this.isHotEntity(e) ? 'hot' : ''} ${this.getEntityVerificationClass(e)}">${e}</span>
-                    `)}
-                    ${r.entities.length > 8 ? html`<span class="intel-item" style="opacity: 0.5;">+${r.entities.length - 8} more</span>` : ''}
+                    ${r.discovered_entities?.length ? html`
+                      <span class="intel-label">Discovered:</span>
+                      ${r.discovered_entities.slice(0, 6).map((e: string) => html`
+                        <span class="intel-item discovered ${this.isHotEntity(e) ? 'hot' : ''} ${this.getEntityVerificationClass(e)}">${e}</span>
+                      `)}
+                      ${r.discovered_entities.length > 6 ? html`<span class="intel-item" style="opacity: 0.5;">+${r.discovered_entities.length - 6}</span>` : ''}
+                    ` : ''}
+                    ${r.introduced_entities?.length ? html`
+                      <span class="intel-label" style="margin-left: 8px;">From query:</span>
+                      ${r.introduced_entities.slice(0, 4).map((e: string) => html`
+                        <span class="intel-item introduced">${e}</span>
+                      `)}
+                      ${r.introduced_entities.length > 4 ? html`<span class="intel-item introduced" style="opacity: 0.5;">+${r.introduced_entities.length - 4}</span>` : ''}
+                    ` : ''}
+                    ${!r.discovered_entities?.length && !r.introduced_entities?.length && r.entities?.length ? html`
+                      <span class="intel-label">Extracted:</span>
+                      ${r.entities.slice(0, 8).map((e: string) => html`
+                        <span class="intel-item ${this.isHotEntity(e) ? 'hot' : ''} ${this.getEntityVerificationClass(e)}">${e}</span>
+                      `)}
+                      ${r.entities.length > 8 ? html`<span class="intel-item" style="opacity: 0.5;">+${r.entities.length - 8} more</span>` : ''}
+                    ` : ''}
                   </div>
                 ` : null}
               </div>

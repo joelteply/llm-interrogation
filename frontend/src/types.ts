@@ -55,7 +55,9 @@ export interface ProbeResponse {
   model: string;
   run_index: number;
   response: string;
-  entities?: string[];
+  entities?: string[];               // All entities (for backwards compat)
+  discovered_entities?: string[];    // Genuine findings NOT in user query
+  introduced_entities?: string[];    // Entities echoed from user query (less valuable)
   is_refusal?: boolean;
 }
 

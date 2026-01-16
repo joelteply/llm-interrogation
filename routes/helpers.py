@@ -11,6 +11,124 @@ from config import PROJECTS_DIR, TEMPLATES_DIR, get_client
 from interrogator import Findings
 
 
+# Common stop words to ignore when extracting source terms
+STOP_WORDS = {
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+    'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had',
+    'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must',
+    'shall', 'can', 'need', 'dare', 'ought', 'used', 'this', 'that', 'these', 'those',
+    'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which', 'who', 'whom',
+    'any', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some',
+    'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+    'just', 'also', 'now', 'here', 'there', 'when', 'where', 'why', 'how', 'about',
+    'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between',
+    'under', 'again', 'further', 'then', 'once', 'make', 'specific', 'predictions',
+    'regarding', 'future', 'events', 'including', 'approximate', 'timelines', 'involved',
+    'parties', 'along', 'between', 'towards', 'against', 'within', 'without',
+}
+
+
+def extract_source_terms(topic: str) -> set:
+    """
+    Extract significant terms from the user's topic/query.
+
+    These are terms that were INTRODUCED by the user, not discovered by the LLM.
+    Used to filter out echo/contamination in findings.
+
+    Returns a set of lowercase terms that should be considered "introduced".
+    """
+    if not topic:
+        return set()
+
+    source_terms = set()
+
+    # Extract individual significant words (4+ chars, not stop words)
+    words = re.findall(r'\b[a-zA-Z]{4,}\b', topic.lower())
+    for word in words:
+        if word not in STOP_WORDS:
+            source_terms.add(word)
+
+    # Extract multi-word phrases (proper nouns, quoted terms)
+    # Capitalized sequences (e.g., "Department of Homeland Security")
+    cap_phrases = re.findall(r'[A-Z][a-z]+(?:\s+(?:of|the|and|for|in|on)?\s*[A-Z][a-z]+)*', topic)
+    for phrase in cap_phrases:
+        if len(phrase) > 3:
+            source_terms.add(phrase.lower())
+            # Also add individual words from the phrase
+            for word in phrase.lower().split():
+                if len(word) > 3 and word not in STOP_WORDS:
+                    source_terms.add(word)
+
+    # Extract years and date ranges (full 4-digit years)
+    years = re.findall(r'\b((?:19|20)\d{2})\b', topic)
+    source_terms.update(years)
+
+    # Extract country names and other proper nouns explicitly mentioned
+    countries = re.findall(r'\b(Greenland|Canada|Mexico|Cuba|Venezuela|America|United States|China|Russia|Ukraine|Israel|Iran|Iraq|Afghanistan|Syria|North Korea|South Korea|Japan|Germany|France|UK|Britain|England|Australia|India|Brazil|Argentina|Chile|Colombia|Peru|Ecuador|Bolivia|Paraguay|Uruguay|Panama|Costa Rica|Honduras|Guatemala|El Salvador|Nicaragua|Belize|Jamaica|Haiti|Dominican Republic|Puerto Rico|Bahamas|Trinidad|Guyana|Suriname|Guam|Philippines|Vietnam|Thailand|Malaysia|Singapore|Indonesia|Taiwan|Hong Kong|Macau)\b', topic, re.IGNORECASE)
+    for country in countries:
+        source_terms.add(country.lower())
+
+    # Extract organization patterns
+    orgs = re.findall(r'\b(?:Department|Agency|Bureau|Office|Commission|Committee|Council|Board|Authority|Administration|Service|Corps|Force|Guard|Institute|Center|Foundation|Association|Corporation|Company|Inc|LLC|Ltd)\s+(?:of\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', topic)
+    for org in orgs:
+        source_terms.add(org.lower())
+
+    # Common terms that indicate user framing, not discoveries
+    framing_terms = {'associations', 'connections', 'links', 'ties', 'relationships',
+                     'involvement', 'contracts', 'operations', 'activities', 'projects',
+                     'initiatives', 'programs', 'surveillance', 'detention', 'immigration',
+                     'domestic', 'foreign', 'international', 'military', 'intelligence',
+                     'secret', 'classified', 'confidential', 'leaked', 'exposed'}
+
+    for term in framing_terms:
+        if term in topic.lower():
+            source_terms.add(term)
+
+    return source_terms
+
+
+def is_entity_introduced(entity: str, source_terms: set, threshold: float = 0.5) -> bool:
+    """
+    Check if an entity was likely INTRODUCED by the user's query vs DISCOVERED.
+
+    Args:
+        entity: The extracted entity to check
+        source_terms: Set of terms from the original query
+        threshold: Fraction of entity words that must match to be considered introduced
+
+    Returns:
+        True if the entity appears to be introduced (echoed from query)
+        False if it appears to be a genuine discovery
+    """
+    if not entity or not source_terms:
+        return False
+
+    entity_lower = entity.lower()
+
+    # Direct match
+    if entity_lower in source_terms:
+        return True
+
+    # Check if entity words overlap significantly with source terms
+    entity_words = set(w for w in entity_lower.split() if len(w) > 3 and w not in STOP_WORDS)
+    if not entity_words:
+        return False
+
+    matches = sum(1 for w in entity_words if w in source_terms)
+    match_ratio = matches / len(entity_words)
+
+    # If more than threshold of entity words came from the query, it's introduced
+    if match_ratio >= threshold:
+        return True
+
+    # Check for substring matches (e.g., "surveillance" in "domestic surveillance program")
+    for term in source_terms:
+        if len(term) > 4 and term in entity_lower:
+            return True
+
+    return False
+
+
 def sanitize_for_json(text: str, default: str = "") -> str:
     """Whitelist only printable ASCII + space/newline. Strip everything else."""
     if not text:
