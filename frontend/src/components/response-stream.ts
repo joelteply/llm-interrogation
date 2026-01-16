@@ -1203,6 +1203,15 @@ export class ResponseStream extends LitElement {
             </div>
           ` : null}
 
+          ${isRunning && !hasCurrentSession && !this.isLoadingTranscript ? html`
+            <div class="running-banner">
+              <div class="spinner"></div>
+              <div class="running-text">
+                Starting probe... generating questions and connecting to models
+              </div>
+            </div>
+          ` : null}
+
           ${this.isLoadingTranscript ? html`
             <div class="empty">
               <div class="spinner"></div>
