@@ -829,7 +829,15 @@ export class ProjectView extends LitElement {
       },
       (event: SSEEvent) => {
         if (event.type === 'questions') {
-          probeState.update(s => ({ ...s, questions: event.data as GeneratedQuestion[] }));
+          // Merge new questions with existing (don't replace to avoid flicker)
+          const newQuestions = event.data as GeneratedQuestion[];
+          probeState.update(s => {
+            // Only update if we're getting more questions or it's a fresh start
+            if (newQuestions.length > s.questions.length || s.questions.length === 0) {
+              return { ...s, questions: newQuestions };
+            }
+            return s;  // Keep existing questions if new batch is smaller
+          });
         } else if (event.type === 'response') {
           const resp = event.data as ProbeResponse;
 
