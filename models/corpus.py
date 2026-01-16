@@ -24,18 +24,18 @@ class QuestionTechnique(str, Enum):
 
 class Question(BaseModel):
     """A generated question for the probe."""
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    model_config = ConfigDict(extra="allow")
 
-    text: str = Field(default="", alias="question")
-    technique: str = "direct"  # Flexible - any technique name
-    template: Optional[str] = None
-    target_entity: Optional[str] = None
-    color: Optional[str] = None  # For UI display
+    question: str = ""  # The question text
+    technique: str = "direct"  # Interrogation technique used
+    template: Optional[str] = None  # Template that generated this
+    target_entity: Optional[str] = None  # Entity this targets
+    color: Optional[str] = None  # UI display color
 
     @property
-    def question(self) -> str:
+    def text(self) -> str:
         """Alias for compatibility."""
-        return self.text
+        return self.question
 
 
 class ProbeResponse(BaseModel):

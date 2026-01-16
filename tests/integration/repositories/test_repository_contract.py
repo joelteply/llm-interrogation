@@ -88,14 +88,14 @@ class RepositoryContractTests(ABC):
 
         project = Project(
             name="test",
-            questions=[Question(text="Question 1"), Question(text="Question 2")]
+            questions=[Question(question="Question 1"), Question(question="Question 2")]
         )
         repo.projects.save(project)
 
         loaded = repo.projects.get("test")
 
         assert len(loaded.questions) == 2
-        assert loaded.questions[0].text == "Question 1"
+        assert loaded.questions[0].question == "Question 1"
 
     def test_project_entity_lists(self, repo):
         project = Project(

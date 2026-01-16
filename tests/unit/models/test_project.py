@@ -79,23 +79,26 @@ class TestQuestion:
     """Test Question model."""
 
     def test_create_minimal(self):
-        q = Question(text="What happened?")
-        assert q.text == "What happened?"
+        q = Question(question="What happened?")
+        assert q.question == "What happened?"
         assert q.technique == "direct"
 
-    def test_create_from_question_alias(self):
-        """Legacy data uses 'question' not 'text'."""
+    def test_text_property(self):
+        """text is alias for question."""
         q = Question(question="What happened?")
         assert q.text == "What happened?"
 
-    def test_question_property(self):
-        q = Question(text="What happened?")
-        assert q.question == "What happened?"
-
     def test_with_technique(self):
-        q = Question(text="Timeline?", technique="timeline")
+        q = Question(question="Timeline?", technique="timeline")
         assert q.technique == "timeline"
 
     def test_with_color(self):
-        q = Question(text="Test", color="#ff0000")
+        q = Question(question="Test", color="#ff0000")
         assert q.color == "#ff0000"
+
+    def test_serializes_correctly(self):
+        """Ensure question field is serialized (not text)."""
+        q = Question(question="Test?", technique="direct")
+        data = q.model_dump()
+        assert "question" in data
+        assert data["question"] == "Test?"
