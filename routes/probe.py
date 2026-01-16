@@ -691,7 +691,9 @@ Mix these techniques across your {question_count} questions."""
                         # String only - mark as custom
                         final_questions.append({"question": q, "technique": "custom"})
 
-            yield f"data: {json.dumps({'type': 'questions', 'data': final_questions})}\n\n"
+            # Only send questions if we have some (avoid clearing frontend)
+            if final_questions:
+                yield f"data: {json.dumps({'type': 'questions', 'data': final_questions})}\n\n"
 
             # SAVE questions to project so AI knows what was already asked
             if project_name and storage.project_exists(project_name) and final_questions:
