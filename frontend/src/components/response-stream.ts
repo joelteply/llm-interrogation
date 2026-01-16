@@ -1207,7 +1207,7 @@ export class ResponseStream extends LitElement {
             <div class="running-banner">
               <div class="spinner"></div>
               <div class="running-text">
-                Starting probe... generating questions and connecting to models
+                ${this._probeState.statusMessage || 'Starting probe...'}
               </div>
             </div>
           ` : null}

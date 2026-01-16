@@ -79,6 +79,7 @@ export interface ProbeState {
   activeModel: string | null;    // Currently queried model (for highlighting)
   currentQuestionIndex: number;  // Index of question being executed (-1 = none)
   entityVerification: EntityVerification | null;  // PUBLIC vs PRIVATE entity verification
+  statusMessage: string;         // Current status for UI feedback
 }
 
 const initialProbeState: ProbeState = {
@@ -107,6 +108,7 @@ const initialProbeState: ProbeState = {
   activeModel: null,
   currentQuestionIndex: -1,
   entityVerification: null,
+  statusMessage: '',
 };
 
 export const probeState = new State<ProbeState>({ ...initialProbeState });

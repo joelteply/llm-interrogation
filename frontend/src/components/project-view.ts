@@ -934,6 +934,12 @@ export class ProjectView extends LitElement {
           const text = (event.data as any)?.text || (event as any).text || (event.data as any)?.narrative || (event as any).narrative || '';
           console.log('[SSE] Narrative event received:', text?.substring(0, 100));
           probeState.update(s => ({ ...s, narrative: text, narrativeUpdated: Date.now() }));
+        } else if (event.type === 'status') {
+          // Status update from backend - show in UI
+          const msg = (event as any).message || (event.data as any)?.message || '';
+          if (msg) {
+            probeState.update(s => ({ ...s, statusMessage: msg }));
+          }
         } else if (event.type === 'error') {
           // Model or API error - log but keep running
           const msg = (event as any).message || (event.data as any)?.message || 'Unknown error';
