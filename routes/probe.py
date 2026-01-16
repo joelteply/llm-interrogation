@@ -273,8 +273,15 @@ def validate_models(selected: list[str]) -> list[str]:
         _AVAILABLE_MODELS_CACHE = set(get_available_models_list())
         print(f"[MODELS] Cached {len(_AVAILABLE_MODELS_CACHE)} available models")
 
+    # Skip embedding and non-chat models even if they're in the list
+    NON_CHAT_KEYWORDS = ['embed', 'whisper', 'tts', 'transcribe', 'vision', 'image', 'audio']
+
     valid = []
     for m in selected:
+        m_lower = m.lower()
+        if any(kw in m_lower for kw in NON_CHAT_KEYWORDS):
+            print(f"[MODELS] Skipping non-chat model: {m}")
+            continue
         if m in _AVAILABLE_MODELS_CACHE:
             valid.append(m)
         else:
@@ -1128,7 +1135,7 @@ Each question MUST contain at least one entity name from above."""
                                 print(f"[PROBE] *** STARTING INLINE SYNTHESIS ***")
 
                                 try:
-                                    from config import get_client
+                                    # get_client already imported at module level
                                     from datetime import datetime as dt
 
                                     # Get top DISCOVERED entities (filtered - not from user query)

@@ -663,7 +663,12 @@ export class ProjectView extends LitElement {
     this.isLoading = true;
 
     // CRITICAL: Reset state before loading new project to prevent cross-project leakage
+    // BUT preserve the autostart flag so new projects can start automatically
+    const shouldAutostart = probeState.get().shouldAutostart;
     resetProbeState();
+    if (shouldAutostart) {
+      probeState.update(s => ({ ...s, shouldAutostart: true }));
+    }
     this._modelContext = {};  // Reset model context for first_mention tracking
 
     try {
