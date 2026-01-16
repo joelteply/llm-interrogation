@@ -4,6 +4,19 @@
 
 ![LLM Interrogator Demo](docs/demo-uap.gif)
 
+<table>
+<tr>
+<td width="40%" align="center">
+<img src="docs/charlie.png" alt="Manual Investigation" width="100%"/>
+<br><em>Manual investigation</em>
+</td>
+<td width="60%" align="center">
+<img src="docs/demo-graph.png" alt="Entity Intelligence Graph" width="100%"/>
+<br><em>LLM Interrogator: Entity graph with confidence heat map, relationship clustering, and provenance tracking</em>
+</td>
+</tr>
+</table>
+
 An interrogator AI plays the role of intelligence operatives - FBI agents, Mossad officers, CIA analysts - to systematically probe target models. It queries all available models, identifies which ones are revealing unique information, then digs deeper into those models while abandoning dead ends. Public information is automatically filtered out, leaving only what the models know that the internet doesn't.
 
 Reid Technique. Scharff Method. KUBARK. Cognitive Interview. These are real intelligence gathering methods adapted for AI interrogation.

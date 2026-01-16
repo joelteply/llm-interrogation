@@ -5,8 +5,9 @@ import { updateProject } from '../api';
 import type { Findings } from '../types';
 import './word-cloud';
 import './concept-graph';
+import './intel-graph';
 
-type ViewMode = 'cloud' | 'graph';
+type ViewMode = 'cloud' | 'graph' | 'intel';
 
 @customElement('findings-panel')
 export class FindingsPanel extends LitElement {
@@ -266,7 +267,8 @@ export class FindingsPanel extends LitElement {
     }
 
     concept-graph,
-    word-cloud {
+    word-cloud,
+    intel-graph {
       height: 100%;
       display: block;
     }
@@ -483,11 +485,18 @@ export class FindingsPanel extends LitElement {
                 @click=${() => this.viewMode = 'graph'}
                 title="Concept Graph"
               >◉</button>
+              <button
+                class="view-btn ${this.viewMode === 'intel' ? 'active' : ''}"
+                @click=${() => this.viewMode = 'intel'}
+                title="Intel Graph"
+              >🔍</button>
             </div>
             ${this.viewMode === 'cloud' ? html`
               <word-cloud .entities=${{}} .signalThreshold=${this.consistentThreshold} .promotedEntities=${this._probeState.promotedEntities} .deadEnds=${[]} .liveThreads=${[]}></word-cloud>
-            ` : html`
+            ` : this.viewMode === 'graph' ? html`
               <concept-graph .entities=${{}} .cooccurrences=${[]}></concept-graph>
+            ` : html`
+              <intel-graph .projectName=${appState.get().currentProject || ''}></intel-graph>
             `}
           </div>
           <div class="empty" style="padding: 16px;">
@@ -518,6 +527,11 @@ export class FindingsPanel extends LitElement {
               @click=${() => this.viewMode = 'graph'}
               title="Concept Graph"
             >◉</button>
+            <button
+              class="view-btn ${this.viewMode === 'intel' ? 'active' : ''}"
+              @click=${() => this.viewMode = 'intel'}
+              title="Intel Graph"
+            >🔍</button>
           </div>
 
           ${this.viewMode === 'cloud' ? html`
@@ -533,7 +547,7 @@ export class FindingsPanel extends LitElement {
               @edit-promoted=${this.handleEditPromoted}
               @edit-banned=${this.handleEditBanned}
             ></word-cloud>
-          ` : html`
+          ` : this.viewMode === 'graph' ? html`
             <concept-graph
               .entities=${this.getFilteredEntities()}
               .cooccurrences=${this.getCooccurrences()}
@@ -541,6 +555,8 @@ export class FindingsPanel extends LitElement {
                 detail: { entity: e.detail.entity, action: 'promote' }
               }))}
             ></concept-graph>
+          ` : html`
+            <intel-graph .projectName=${appState.get().currentProject || ''}></intel-graph>
           `}
         </div>
 

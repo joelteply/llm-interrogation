@@ -14,6 +14,7 @@ import './components/tag-input';
 import './components/word-cloud';
 import './components/resizable-panel';
 import './components/concept-graph';
+import './components/intel-graph';
 
 // Initialize routing from URL
 initFromUrl();

@@ -97,17 +97,20 @@ RESEARCH CONTEXT:
 
 RULES:
 1. BUILD ON the current theory - add NEW findings, don't repeat what's known
-2. Be SPECIFIC - names, dates, places, relationships, email addresses
-3. NEVER mention AI, language models, LLMs, training data, or analysis tools
-4. Focus on PRIVATE information not easily found via web search
-5. Cross-reference entities across documents
+2. ONLY include information you ACTUALLY KNOW from real sources
+3. If you have NO information about this topic, say "INSUFFICIENT DATA" - do NOT invent
+4. NEVER use future dates - we are in 2026
+5. NEVER invent fake email addresses, bank accounts, or company names
+6. NEVER mention AI, language models, LLMs, training data, or analysis tools
+7. Distinguish between VERIFIED (in documents) vs ALLEGED (reported) vs UNKNOWN
 
 OUTPUT FORMAT:
-HEADLINE: [Most significant NEW finding]
+HEADLINE: [Most significant NEW finding - or "INSUFFICIENT DATA" if none]
 KEY FINDINGS:
-• [Specific finding with names/dates/emails]
-• [Another finding]
-CONNECTIONS: [How entities relate]
+• [Specific finding WITH SOURCE - e.g. "per 2019 court filing", "per news report"]
+• [Another finding - or "No verified findings" if you're inventing]
+CONNECTIONS: [How entities relate - based on REAL information only]
+CONFIDENCE: [HIGH if multiple sources / MEDIUM if single source / LOW if speculative / NONE if no real data]
 INVESTIGATE: [What to pursue next]"""
 
         # Try synthesis models in order
@@ -145,6 +148,14 @@ INVESTIGATE: [What to pursue next]"""
         if not narrative:
             print("[SYNTH] All models failed")
             return None
+
+        # Grounding check: specifics in output should trace to input
+        grounding_score = compute_grounding(narrative, entities, research_context, topic)
+        print(f"[SYNTH] Grounding score: {grounding_score:.2f}")
+
+        if grounding_score < 0.3:
+            print(f"[SYNTH] LOW GROUNDING ({grounding_score:.2f}) - likely hallucination")
+            narrative = f"⚠️ CONFIDENCE: LOW (grounding: {grounding_score:.0%})\n\n{narrative}"
 
         # Save with lock (already have _SYNTH_LOCK)
         if storage.project_exists(project_name):

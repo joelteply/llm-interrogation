@@ -22,9 +22,11 @@ app = Flask(
 # Register blueprints
 from routes import projects_bp, probe_bp
 from routes.analyze import analyze_bp
+from routes.intel import intel_bp
 app.register_blueprint(projects_bp)
 app.register_blueprint(probe_bp)
 app.register_blueprint(analyze_bp)
+app.register_blueprint(intel_bp)
 
 # Migrate old single-file projects to new directory structure
 from routes.project_storage import migrate_all_old_projects
