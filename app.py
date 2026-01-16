@@ -35,9 +35,8 @@ if migrated:
     print(f"[STARTUP] Migrated {migrated} projects to new directory structure")
 
 # Start background workers
-from workers import ResearchWorker
-from workers.research import start_worker as start_research_worker
-start_research_worker()
+from workers import start_all_workers
+start_all_workers()
 print("[STARTUP] Background workers started")
 
 

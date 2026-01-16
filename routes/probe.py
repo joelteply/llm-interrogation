@@ -380,6 +380,10 @@ def run_probe():
     technique_preset = data.get("technique_preset", "auto")  # "auto" or template ID
     print(f"[PROBE] technique_preset: {technique_preset}")
 
+    # Focus background research on this project
+    from workers.research import get_worker as get_research_worker
+    get_research_worker().set_project(project_name)
+
     def generate():
         nonlocal negative_entities, positive_entities, models, auto_curate, technique_preset
         try:
@@ -911,10 +915,23 @@ Each question MUST contain at least one entity name from above."""
                         thread = session.get_thread(model_key)
                         actual_question = question
 
+                        # Query research for context based on entities in question
+                        research_snippet = ""
+                        if project_name:
+                            from routes.analyze.research import query_research
+                            # Extract key terms from question for research lookup
+                            q_terms = [w for w in question.split() if len(w) > 4 and w[0].isupper()]
+                            if q_terms:
+                                research_snippet = query_research(q_terms[:5], project_name, max_results=2)
+
                         # Adapt for high-refusal models
                         thread_stats = thread.get_stats()
                         if thread_stats["refusal_rate"] > 0.5 and thread_stats["total_exchanges"] >= 2:
                             actual_question = rephrase_for_indirect(question, topic)
+
+                        # Add research context to question if found
+                        if research_snippet:
+                            actual_question = f"{research_snippet}\n\n{actual_question}"
 
                         resp_text = query_with_thread(
                             model_key=model_key,

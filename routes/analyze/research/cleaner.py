@@ -1,8 +1,108 @@
 """
-Document Cleaner - Use LLM to clean up garbage OCR.
+Document Cleaner - Use LLM to clean up garbage OCR and evaluate research quality.
 """
 
 from typing import Optional
+
+
+def is_useful_research(content: str, title: str, topic: str) -> tuple[bool, str]:
+    """
+    Use LLM to evaluate if research content is useful for the topic.
+    Returns (is_useful, reason).
+    """
+    if not content or len(content) < 100:
+        return False, "Too short"
+
+    # Quick heuristics first
+    lower = content.lower()
+    trash_signals = [
+        "just a moment", "checking your browser", "access denied",
+        "403 forbidden", "404 not found", "subscribe to read",
+        "cookies must be enabled", "please enable javascript",
+        "captcha", "cloudflare"
+    ]
+    for signal in trash_signals:
+        if signal in lower[:500]:
+            return False, f"Blocked/paywall: {signal}"
+
+    try:
+        from config import get_client
+        client, config = get_client('groq/llama-3.1-8b-instant')
+
+        # Quick relevance check
+        response = client.chat.completions.create(
+            model=config['model'],
+            messages=[{
+                "role": "user",
+                "content": f"""Is this content useful for researching: "{topic}"?
+
+TITLE: {title}
+CONTENT (first 1500 chars):
+{content[:1500]}
+
+Reply with ONLY one of:
+- USEFUL: [brief reason why]
+- TRASH: [brief reason why - e.g. "marketing page", "paywall", "unrelated", "no substance"]"""
+            }],
+            max_tokens=100,
+            temperature=0.1
+        )
+
+        result = response.choices[0].message.content.strip()
+        if result.startswith("USEFUL"):
+            return True, result
+        else:
+            return False, result
+
+    except Exception as e:
+        # On error, keep the content (don't filter)
+        return True, f"Eval failed: {e}"
+
+
+def suggest_next_searches(topic: str, entities: list[str], existing_research: str) -> list[str]:
+    """
+    Use LLM to suggest what to search next based on what we've found.
+    Returns list of search queries.
+    """
+    try:
+        from config import get_client
+        client, config = get_client('groq/llama-3.1-8b-instant')
+
+        response = client.chat.completions.create(
+            model=config['model'],
+            messages=[{
+                "role": "user",
+                "content": f"""Topic: {topic}
+
+Known entities: {', '.join(entities[:15])}
+
+Existing research summary (last 500 chars):
+{existing_research[-500:] if existing_research else "None yet"}
+
+Suggest 5 specific web searches to find MORE information about this topic.
+Focus on:
+- Specific names + events
+- Court cases, lawsuits, investigations
+- News coverage, leaks, whistleblowers
+- Financial connections, contracts
+- Internal documents, emails
+
+Reply with ONLY the search queries, one per line. Be specific - include names and dates where possible."""
+            }],
+            max_tokens=300,
+            temperature=0.7
+        )
+
+        queries = [
+            line.strip().lstrip('0123456789.-) ')
+            for line in response.choices[0].message.content.strip().split('\n')
+            if line.strip() and len(line.strip()) > 10
+        ]
+        return queries[:5]
+
+    except Exception as e:
+        print(f"[RESEARCH] suggest_next_searches failed: {e}")
+        return []
 
 
 def looks_like_garbage(text: str) -> bool:

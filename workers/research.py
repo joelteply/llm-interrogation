@@ -25,13 +25,13 @@ class WorkerStats:
 
 class ResearchWorker:
     """
-    Background worker that continuously researches entities in projects.
+    Background worker that continuously researches entities in the active project.
 
     Runs at a low clip rate to avoid overwhelming APIs while keeping
     research context fresh.
     """
 
-    def __init__(self, interval: float = 30.0, max_queries_per_run: int = 3):
+    def __init__(self, interval: float = 20.0, max_queries_per_run: int = 10):
         """
         Args:
             interval: Seconds between research cycles
@@ -43,6 +43,13 @@ class ResearchWorker:
         self._stop_event = threading.Event()
         self.stats = WorkerStats()
         self._callbacks: list = []  # SSE callbacks to notify
+        self._active_project: Optional[str] = None  # Only research this project
+
+    def set_project(self, project_name: Optional[str]):
+        """Set the active project to research. None to pause."""
+        self._active_project = project_name
+        if project_name:
+            print(f"[RESEARCH-WORKER] Now focused on: {project_name}")
 
     def start(self):
         """Start the worker thread."""
@@ -91,16 +98,19 @@ class ResearchWorker:
 
         while not self._stop_event.is_set():
             try:
-                # Get all projects
-                projects = storage.list_projects()
+                project = self._active_project
 
-                for project_name in projects:
-                    if self._stop_event.is_set():
-                        break
+                # If no active project, pick most recently updated
+                if not project:
+                    projects = storage.list_projects()
+                    if projects:
+                        # list_projects returns sorted by updated desc
+                        first = projects[0]
+                        project = first.get("name") if isinstance(first, dict) else first
 
-                    self._research_project(project_name)
-
-                self.stats.last_run = time.time()
+                if project:
+                    self._research_project(project)
+                    self.stats.last_run = time.time()
 
             except Exception as e:
                 print(f"[RESEARCH-WORKER] Error in loop: {e}")
@@ -112,7 +122,7 @@ class ResearchWorker:
         print("[RESEARCH-WORKER] Loop ended")
 
     def _research_project(self, project_name: str):
-        """Research entities in a single project."""
+        """Research entities in a single project using LLM-directed queries."""
         from routes import project_storage as storage
 
         if not storage.project_exists(project_name):
@@ -126,48 +136,68 @@ class ResearchWorker:
                 return
 
             # Get entities to research
-            entities_to_research = self._get_research_targets(proj)
+            entities_to_research = self._get_research_targets(project_name, proj)
+            existing_research = proj.get("research_context", "")
 
-            if not entities_to_research:
-                return
-
-            print(f"[RESEARCH-WORKER] {project_name}: researching {len(entities_to_research)} entities")
+            print(f"[RESEARCH-WORKER] {project_name}: researching with {len(entities_to_research)} known entities")
             self.stats.last_project = project_name
 
-            # Run research queries
+            # LLM-directed: Get smart search queries
             from routes.analyze.research import research
+            from routes.analyze.research.cleaner import suggest_next_searches, is_useful_research
 
-            for entity in entities_to_research[:self.max_queries_per_run]:
+            # Ask LLM what to search for
+            queries = suggest_next_searches(topic, entities_to_research, existing_research)
+            if not queries:
+                # Fallback to simple entity queries
+                topic_words = topic.split()[:2]
+                topic_prefix = " ".join(topic_words)
+                queries = [f"{topic_prefix} {e}" for e in entities_to_research[:5]]
+
+            print(f"[RESEARCH-WORKER] LLM suggested queries: {queries[:3]}...")
+
+            docs_found = 0
+            for query in queries[:self.max_queries_per_run]:
                 if self._stop_event.is_set():
                     break
-
-                query = f"{topic} {entity}"
 
                 try:
                     result = research(
                         query=query,
                         project_name=project_name,
                         sources=['documentcloud', 'web'],
-                        max_per_source=3
+                        max_per_source=5
                     )
 
                     self.stats.queries_run += 1
-                    self.stats.documents_fetched += result.fetched_count
-                    self.stats.documents_cached += result.cached_count
 
-                    if result.documents:
-                        # Update project research context
+                    # Filter with LLM - only keep useful results
+                    useful_docs = []
+                    for doc in result.documents:
+                        is_useful, reason = is_useful_research(doc.content, doc.title, topic)
+                        if is_useful:
+                            useful_docs.append(doc)
+                            print(f"[RESEARCH-WORKER] USEFUL: {doc.title[:40]}... - {reason[:50]}")
+                        else:
+                            print(f"[RESEARCH-WORKER] TRASH: {doc.title[:40]}... - {reason[:50]}")
+
+                    self.stats.documents_fetched += len(useful_docs)
+                    self.stats.documents_cached += result.cached_count
+                    docs_found += len(useful_docs)
+
+                    if useful_docs:
+                        # Update project research context with useful docs only
+                        result.documents = useful_docs
                         self._update_project_research(project_name, result)
 
-                        # Notify callbacks
                         self._notify('research_update', {
                             'project': project_name,
-                            'entity': entity,
-                            'documents_found': len(result.documents)
+                            'query': query,
+                            'documents_found': len(useful_docs)
                         })
 
                 except Exception as e:
-                    print(f"[RESEARCH-WORKER] Query failed for '{entity}': {e}")
+                    print(f"[RESEARCH-WORKER] Query failed for '{query[:50]}': {e}")
                     self.stats.errors += 1
 
                 # Small delay between queries
@@ -177,7 +207,7 @@ class ResearchWorker:
             print(f"[RESEARCH-WORKER] Failed to research {project_name}: {e}")
             self.stats.errors += 1
 
-    def _get_research_targets(self, proj: dict) -> list[str]:
+    def _get_research_targets(self, project_name: str, proj: dict) -> list[str]:
         """Get list of entities that need research."""
         targets = []
 
@@ -195,7 +225,7 @@ class ResearchWorker:
             from routes import project_storage as storage
             from collections import Counter
             try:
-                corpus = storage.load_corpus(proj.get("name", ""))
+                corpus = storage.load_corpus(project_name)
                 entity_counts = Counter()
                 for item in corpus:
                     for entity in item.get("entities", []):

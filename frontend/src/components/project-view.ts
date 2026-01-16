@@ -674,6 +674,13 @@ export class ProjectView extends LitElement {
     try {
       this.project = await getProject(this.projectName);
 
+      // Tell research worker to focus on this project
+      fetch('/api/workers/research/project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: this.projectName })
+      }).catch(() => {}); // Fire and forget
+
       // Load saved state into probe state
       // Default topic from project name if not set
       const defaultTopic = this.projectName

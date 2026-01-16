@@ -383,21 +383,17 @@ def append_to_corpus(name):
 
 @projects_bp.route("/api/workers/status")
 def worker_status():
-    """Get status of background workers."""
+    """Get status of all background workers."""
+    from workers import get_all_stats
+    return jsonify(get_all_stats())
+
+
+@projects_bp.route("/api/workers/research/project", methods=["POST"])
+def set_research_project():
+    """Set which project the research worker focuses on."""
     from workers.research import get_worker
-    
-    worker = get_worker()
-    stats = worker.stats
-    
-    return jsonify({
-        "research": {
-            "running": worker.is_running(),
-            "queries_run": stats.queries_run,
-            "documents_fetched": stats.documents_fetched,
-            "documents_cached": stats.documents_cached,
-            "errors": stats.errors,
-            "last_run": stats.last_run,
-            "last_project": stats.last_project,
-        }
-    })
+    data = request.json
+    project_name = data.get("project")
+    get_worker().set_project(project_name)
+    return jsonify({"success": True, "project": project_name})
 
