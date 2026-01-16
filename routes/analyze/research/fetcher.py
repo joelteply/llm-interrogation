@@ -75,6 +75,65 @@ def make_doc_id(source: str, url: str) -> str:
     return f"{source}_{hashlib.md5(url.encode()).hexdigest()[:12]}"
 
 
+def is_garbage_content(content: str) -> tuple[bool, str]:
+    """
+    Detect if fetched content is garbage (errors, blocks, captchas).
+    Returns (is_garbage, reason).
+    """
+    if not content or len(content.strip()) < 100:
+        return True, "too short"
+
+    content_lower = content.lower()
+
+    # JSON error responses
+    if content.strip().startswith('{') and '"error"' in content:
+        return True, "json error response"
+
+    # Block/captcha indicators
+    block_indicators = [
+        'access denied',
+        'access blocked',
+        'captcha',
+        'robot check',
+        'are you a robot',
+        'please verify',
+        'unusual traffic',
+        'too many requests',
+        'rate limit',
+        'blocked',
+        '403 forbidden',
+        '401 unauthorized',
+        'login required',
+        'sign in to continue',
+        'please log in',
+        'enable javascript',
+        'browser not supported',
+        'cookies required',
+        'subscription required',
+        'premium content',
+        'paywall',
+    ]
+
+    for indicator in block_indicators:
+        if indicator in content_lower:
+            # Only flag if content is short (actual articles might mention these words)
+            if len(content) < 1000:
+                return True, f"blocked: {indicator}"
+
+    # Chinese block messages (common on Chinese sites)
+    chinese_blocks = ['请求存在异常', '访问限制', '验证码', '登录后']
+    for block in chinese_blocks:
+        if block in content:
+            return True, f"chinese block: {block}"
+
+    # Too much boilerplate, not enough content (very short = likely error page)
+    words = content.split()
+    if len(words) < 20:
+        return True, "insufficient content"
+
+    return False, ""
+
+
 def fetch_pdf(url: str, timeout: int = 30) -> FetchResult:
     """Fetch PDF and extract text."""
     if not REQUESTS_OK:
@@ -197,8 +256,11 @@ class BrowserFetcher:
             if len(content) > 50000:
                 content = content[:50000] + '\n\n[TRUNCATED]'
 
-            if len(content) < 100:
-                return FetchResult(real_url, title, "", False, "no content")
+            # Validate content isn't garbage
+            is_garbage, reason = is_garbage_content(content)
+            if is_garbage:
+                print(f"[fetch] Rejected garbage content from {real_url[:50]}: {reason}")
+                return FetchResult(real_url, title, "", False, f"garbage: {reason}")
 
             return FetchResult(real_url, title, content, True)
 

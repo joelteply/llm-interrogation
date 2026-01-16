@@ -18,7 +18,7 @@ from interrogator import (
     build_synthesis_prompt, build_continuation_prompts, build_drill_down_prompts,
     CycleState, identify_threads
 )
-from interrogator.synthesize import get_project_lock, synthesize_async
+from interrogator.synthesize import get_project_lock
 from . import probe_bp
 from . import project_storage as storage
 from .helpers import (
@@ -1100,121 +1100,32 @@ Each question MUST contain at least one entity name from above."""
                             responses_since_synth += 1
                             print(f"[PROBE] Response #{responses_since_synth}, scored_entities={len(findings.scored_entities) if findings.scored_entities else 0}")
 
-                            # Trigger synthesis periodically - every 20 responses (synchronous to ensure it completes)
+                            # Trigger synthesis periodically - every 20 responses via centralized synthesis
                             if responses_since_synth >= 20 and project_name and findings.scored_entities and len(findings.scored_entities) >= 3:
                                 responses_since_synth = 0
-                                try:
-                                    print(f"[PROBE] Triggering SYNCHRONOUS synthesis with {len(findings.scored_entities)} entities...")
+                                from routes.synthesis import synthesize_narrative as do_synth
 
-                                    # Build prioritized list of models to try for synthesis
-                                    # Prefer llama/deepseek (less likely to refuse), then try others
-                                    synth_candidates = []
-                                    for m in round_models:
-                                        if 'llama' in m.lower() or 'deepseek' in m.lower():
-                                            synth_candidates.insert(0, m)  # Preferred models first
-                                        else:
-                                            synth_candidates.append(m)
-                                    if not synth_candidates:
-                                        synth_candidates = ["groq/llama-3.1-8b-instant"]
+                                # Get research context for synthesis
+                                research_for_synth = ""
+                                if project_name:
+                                    try:
+                                        from routes.analyze.research import query_research
+                                        top_ents = [e for e, _, _ in list(findings.scored_entities[:5])]
+                                        research_for_synth = query_research(top_ents, project_name, max_results=2)[:1500]
+                                    except:
+                                        pass
 
-                                    # Try to verify entities via web search (may fail due to rate limits)
-                                    top_entities = [e for e, _, f in list(findings.scored_entities[:15])]
-                                    verification = verify_entities(top_entities, topic, max_entities=10)
+                                # Run centralized synthesis (has its own locking)
+                                narrative = do_synth(
+                                    project_name=project_name,
+                                    topic=topic,
+                                    entities=list(findings.scored_entities[:15]),
+                                    research_context=research_for_synth
+                                )
 
-                                    public_names = set(v["entity"] for v in verification.get("verified", []))
-                                    private_names = set(u["entity"] for u in verification.get("unverified", []))
-                                    verification_worked = len(public_names) + len(private_names) > 0
-
-                                    ent_parts = []
-                                    for e, _, f in list(findings.scored_entities[:15]):
-                                        if e in public_names:
-                                            ent_parts.append(f"{e} ({f}x, PUBLIC)")
-                                        elif e in private_names:
-                                            ent_parts.append(f"{e} ({f}x, PRIVATE)")
-                                        else:
-                                            ent_parts.append(f"{e} ({f}x)")
-                                    ent_str = ", ".join(ent_parts)
-
-                                    # Get existing narrative to build upon
-                                    existing_narrative_for_synth = ""
-                                    if project_name and storage.project_exists(project_name):
-                                        proj = storage.load_project_meta(project_name)
-                                        existing_narrative_for_synth = proj.get("narrative", "")[:2000]
-
-                                    # Get research context
-                                    research_for_synth = ""
-                                    if project_name:
-                                        try:
-                                            from routes.analyze.research import query_research
-                                            research_for_synth = query_research(top_entities[:5], project_name, max_results=2)[:1500]
-                                        except:
-                                            pass
-
-                                    synth_prompt = f"""Update the intelligence report about: {topic}
-
-CURRENT THEORY (build on this, don't start over):
-{existing_narrative_for_synth if existing_narrative_for_synth else "No prior theory - this is the first report."}
-
-ENTITIES FOUND (PUBLIC = known, PRIVATE = undocumented):
-{ent_str}
-
-RESEARCH CONTEXT:
-{research_for_synth if research_for_synth else "No research documents available."}
-
-RULES:
-1. BUILD ON the current theory - add new findings, don't delete what's known
-2. PRIVATE entities are the key findings - explain their significance
-3. Be SPECIFIC - names, dates, places, relationships
-4. NEVER mention AI, language models, LLMs, training data, or analysis tools
-
-OUTPUT FORMAT:
-HEADLINE: [Most significant finding]
-KEY FINDINGS:
-• [Specific finding with names/dates]
-• [Another finding]
-CONNECTIONS: [How entities relate]
-INVESTIGATE: [What to pursue next]"""
-
-                                    # Try each model until we get a non-refusal response
-                                    narrative = None
-                                    for synth_model in synth_candidates:
-                                        try:
-                                            synth_client, synth_cfg = get_client(synth_model)
-                                            synth_resp = synth_client.chat.completions.create(
-                                                model=synth_cfg["model"],
-                                                messages=[{"role": "user", "content": synth_prompt}],
-                                                temperature=0.4,
-                                                max_tokens=2500
-                                            )
-                                            candidate_narrative = synth_resp.choices[0].message.content.strip()
-
-                                            if is_refusal(candidate_narrative):
-                                                print(f"[PROBE] {synth_model} refused synthesis, trying next model...")
-                                                continue  # Try next model
-                                            else:
-                                                narrative = candidate_narrative
-                                                print(f"[PROBE] {synth_model} succeeded for synthesis")
-                                                break  # Got good response
-                                        except Exception as model_err:
-                                            print(f"[PROBE] {synth_model} synthesis error: {model_err}, trying next...")
-                                            continue
-
-                                    if narrative:
-                                        # Save immediately with timestamp
-                                        narrative_timestamp = datetime.now().isoformat()
-                                        if project_name and storage.project_exists(project_name):
-                                            with get_project_lock():
-                                                proj_data = storage.load_project_meta(project_name)
-                                                proj_data["narrative"] = narrative
-                                                proj_data["working_theory"] = narrative
-                                                proj_data["narrative_updated"] = narrative_timestamp
-                                                storage.save_project_meta(project_name, proj_data)
-                                        print(f"[PROBE] *** SYNTH SUCCESS *** Saved narrative ({len(narrative)} chars)")
-                                        yield f"data: {json.dumps({'type': 'narrative', 'text': narrative})}\n\n"
-                                    else:
-                                        print(f"[PROBE] All {len(synth_candidates)} models refused synthesis")
-                                except Exception as synth_err:
-                                    print(f"[PROBE] Synthesis error (non-fatal): {synth_err}")
+                                if narrative:
+                                    print(f"[PROBE] *** SYNTH SUCCESS *** ({len(narrative)} chars)")
+                                    yield f"data: {json.dumps({'type': 'narrative', 'text': narrative})}\n\n"
 
                             # Incremental save - append to corpus JSONL (thread-safe)
                             if project_name and storage.project_exists(project_name):
@@ -1257,13 +1168,20 @@ INVESTIGATE: [What to pursue next]"""
                     except Exception as e:
                         yield f"data: {json.dumps({'type': 'warning', 'message': f'Auto-curate failed: {e}'})}\n\n"
 
-                # ALSO trigger async synthesis at batch end (belt and suspenders)
+                # Background synthesis via worker pool (won't run if one already in progress)
                 if project_name and findings.scored_entities and len(findings.scored_entities) >= 3:
-                    # NOTE: Disabled async synthesis - conflicts with synchronous synthesis above
-                    # Both were writing to narrative field, causing duplicates/corruption
-                    # print(f"[PROBE] Batch complete - triggering async synthesis with {len(findings.scored_entities)} entities")
-                    # project_dir = storage.get_project_dir(project_name)
-                    # synthesize_async(project_dir, topic, list(findings.scored_entities[:15]))
+                    from routes.synthesis import synthesize_narrative
+                    from routes.workers import submit_synthesis
+
+                    def on_synth_done(narrative):
+                        if narrative:
+                            print(f"[PROBE] Background synthesis complete ({len(narrative)} chars)")
+
+                    submit_synthesis(
+                        synthesize_narrative,
+                        project_name, topic, list(findings.scored_entities[:15]),
+                        callback=on_synth_done
+                    )
 
                 if not infinite_mode:
                     bg_stop.set()  # Stop background generator
