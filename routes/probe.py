@@ -274,7 +274,7 @@ def validate_models(selected: list[str]) -> list[str]:
         print(f"[MODELS] Cached {len(_AVAILABLE_MODELS_CACHE)} available models")
 
     # Skip embedding and non-chat models even if they're in the list
-    NON_CHAT_KEYWORDS = ['embed', 'whisper', 'tts', 'transcribe', 'vision', 'image', 'audio']
+    NON_CHAT_KEYWORDS = ['embed', 'whisper', 'tts', 'transcribe', 'vision', 'image', 'audio', 'minilm']
 
     valid = []
     for m in selected:
