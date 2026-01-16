@@ -15,6 +15,7 @@ import './components/word-cloud';
 import './components/resizable-panel';
 import './components/concept-graph';
 import './components/intel-graph';
+import './components/skeptic-panel';
 
 // Initialize routing from URL
 initFromUrl();

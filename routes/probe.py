@@ -759,6 +759,21 @@ Mix these techniques across your {question_count} questions."""
 
                 # Question queue - starts with initial questions, gets refilled
                 question_queue = list(final_questions)  # Copy
+
+                # Inject skeptic counter-questions if available
+                if project_name and storage.project_exists(project_name):
+                    skeptic = storage.load_project_meta(project_name).get("skeptic_feedback", {})
+                    counter_qs = skeptic.get("counter_questions", [])
+                    if counter_qs:
+                        for cq in counter_qs[:3]:  # Max 3 counter-questions
+                            question_queue.append({
+                                "question": cq,
+                                "technique": "skeptic_counter",
+                                "template": "skeptic",
+                                "color": "#e74c3c"  # Red for skeptic
+                            })
+                        print(f"[PROBE] Injected {len(counter_qs[:3])} skeptic counter-questions")
+
                 questions_asked_this_batch = 0
                 model_idx = 0
                 highest_completed_q_idx = -1  # Track highest completed for UI progress

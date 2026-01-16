@@ -388,12 +388,25 @@ def worker_status():
     return jsonify(get_all_stats())
 
 
-@projects_bp.route("/api/workers/research/project", methods=["POST"])
-def set_research_project():
-    """Set which project the research worker focuses on."""
-    from workers.research import get_worker
+@projects_bp.route("/api/workers/focus", methods=["POST"])
+def set_workers_focus():
+    """Set which project all workers focus on."""
+    from workers.research import get_worker as get_research
+    from workers.skeptic import get_worker as get_skeptic
     data = request.json
     project_name = data.get("project")
-    get_worker().set_project(project_name)
+    get_research().set_project(project_name)
+    get_skeptic().set_project(project_name)
     return jsonify({"success": True, "project": project_name})
+
+
+@projects_bp.route("/api/projects/<name>/skeptic")
+def get_skeptic_feedback(name):
+    """Get devil's advocate feedback for a project."""
+    meta = storage.load_project_meta(name)
+    if not meta:
+        return jsonify({"error": "Not found"}), 404
+
+    feedback = meta.get("skeptic_feedback", {})
+    return jsonify(feedback)
 

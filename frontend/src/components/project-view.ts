@@ -206,6 +206,11 @@ export class ProjectView extends LitElement {
       overflow: hidden;
     }
 
+    .right-panel skeptic-panel {
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+
     resizable-panel {
       flex: 1;
       overflow: hidden;
@@ -674,8 +679,8 @@ export class ProjectView extends LitElement {
     try {
       this.project = await getProject(this.projectName);
 
-      // Tell research worker to focus on this project
-      fetch('/api/workers/research/project', {
+      // Tell all workers to focus on this project
+      fetch('/api/workers/focus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project: this.projectName })
@@ -1265,6 +1270,9 @@ export class ProjectView extends LitElement {
 
         <!-- RIGHT: Findings + Responses -->
         <div class="right-panel">
+          <!-- Devil's Advocate feedback -->
+          <skeptic-panel .projectName=${this.projectName}></skeptic-panel>
+
           <resizable-panel .initialHeight=${280} .minHeight=${150} .maxHeight=${600}>
             <!-- TOP: Interactive word cloud -->
             <div slot="top" class="findings-top">
