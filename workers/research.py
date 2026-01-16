@@ -85,7 +85,7 @@ class ResearchWorker:
 
     def _run_loop(self):
         """Main worker loop."""
-        from storage import storage
+        from routes import project_storage as storage
 
         print("[RESEARCH-WORKER] Loop started")
 
@@ -113,7 +113,7 @@ class ResearchWorker:
 
     def _research_project(self, project_name: str):
         """Research entities in a single project."""
-        from storage import storage
+        from routes import project_storage as storage
 
         if not storage.project_exists(project_name):
             return
@@ -189,19 +189,22 @@ class ResearchWorker:
             if entity:
                 targets.append(entity)
 
-        # Priority 2: Top entities from findings
+        # Priority 2: Top entities from corpus
         # (These are already in the word cloud, so researching them adds context)
         if len(targets) < 5:
-            # Load findings to get top entities
-            from storage import storage
+            from routes import project_storage as storage
+            from collections import Counter
             try:
-                findings_data = storage.load_findings(proj.get("name", ""))
-                if findings_data:
-                    entities = findings_data.get("entities", {})
-                    sorted_entities = sorted(entities.items(), key=lambda x: x[1], reverse=True)
-                    for entity, count in sorted_entities[:10]:
-                        if entity not in targets and len(targets) < 5:
-                            targets.append(entity)
+                corpus = storage.load_corpus(proj.get("name", ""))
+                entity_counts = Counter()
+                for item in corpus:
+                    for entity in item.get("entities", []):
+                        entity_counts[entity] += 1
+
+                # Get top entities by frequency
+                for entity, count in entity_counts.most_common(10):
+                    if entity not in targets and len(targets) < 5:
+                        targets.append(entity)
             except Exception:
                 pass
 
@@ -209,7 +212,7 @@ class ResearchWorker:
 
     def _update_project_research(self, project_name: str, result):
         """Update project with new research context."""
-        from storage import storage
+        from routes import project_storage as storage
 
         try:
             proj = storage.load_project_meta(project_name)
