@@ -603,13 +603,12 @@ export class ProbeControls extends LitElement {
   private handleSSEEvent(event: SSEEvent) {
     switch (event.type) {
       case 'questions':
-        // Merge new questions - only update if we're getting more or starting fresh
+        // Append new questions (dedupe by question text)
         const newQs = event.data as GeneratedQuestion[];
         probeState.update((s) => {
-          if (newQs.length > s.questions.length || s.questions.length === 0) {
-            return { ...s, questions: newQs };
-          }
-          return s;
+          const existing = new Set(s.questions.map(q => q.question));
+          const toAdd = newQs.filter(q => !existing.has(q.question));
+          return { ...s, questions: [...s.questions, ...toAdd] };
         });
         break;
       case 'run_start':

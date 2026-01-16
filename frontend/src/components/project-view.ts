@@ -829,14 +829,12 @@ export class ProjectView extends LitElement {
       },
       (event: SSEEvent) => {
         if (event.type === 'questions') {
-          // Merge new questions with existing (don't replace to avoid flicker)
+          // Append new questions (dedupe by question text)
           const newQuestions = event.data as GeneratedQuestion[];
           probeState.update(s => {
-            // Only update if we're getting more questions or it's a fresh start
-            if (newQuestions.length > s.questions.length || s.questions.length === 0) {
-              return { ...s, questions: newQuestions };
-            }
-            return s;  // Keep existing questions if new batch is smaller
+            const existing = new Set(s.questions.map(q => q.question));
+            const toAdd = newQuestions.filter(q => !existing.has(q.question));
+            return { ...s, questions: [...s.questions, ...toAdd] };
           });
         } else if (event.type === 'response') {
           const resp = event.data as ProbeResponse;
