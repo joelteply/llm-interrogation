@@ -379,3 +379,25 @@ def append_to_corpus(name):
     data = request.json
     storage.append_response(name, data)
     return jsonify({"success": True})
+
+
+@projects_bp.route("/api/workers/status")
+def worker_status():
+    """Get status of background workers."""
+    from workers.research import get_worker
+    
+    worker = get_worker()
+    stats = worker.stats
+    
+    return jsonify({
+        "research": {
+            "running": worker.is_running(),
+            "queries_run": stats.queries_run,
+            "documents_fetched": stats.documents_fetched,
+            "documents_cached": stats.documents_cached,
+            "errors": stats.errors,
+            "last_run": stats.last_run,
+            "last_project": stats.last_project,
+        }
+    })
+
