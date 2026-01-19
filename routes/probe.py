@@ -1122,80 +1122,8 @@ Each question MUST contain at least one entity name from above."""
                                 # Tell UI to advance to next pending question
                                 yield f"data: {json.dumps({'type': 'run_start', 'question_index': highest_completed_q_idx + 1})}\n\n"
 
-                            responses_since_synth += 1
-                            se_count = len(findings.scored_entities) if findings.scored_entities else 0
-                            print(f"[PROBE] Response #{responses_since_synth}, scored_entities={se_count}")
-
-                            # Trigger synthesis periodically - every 10 responses via centralized synthesis
-                            synth_ready = responses_since_synth >= 10 and project_name and se_count >= 3
-                            if responses_since_synth >= 10:
-                                print(f"[PROBE] SYNTH CHECK: responses={responses_since_synth}, project={project_name}, entities={se_count}, ready={synth_ready}")
-                            if synth_ready:
-                                responses_since_synth = 0
-                                print(f"[PROBE] *** STARTING INLINE SYNTHESIS ***")
-
-                                try:
-                                    # get_client already imported at module level
-                                    from datetime import datetime as dt
-
-                                    # Get top DISCOVERED entities (filtered - not from user query)
-                                    top_ents = [e for e, _, _ in list(findings.scored_entities[:15])]
-                                    ent_str = ", ".join(f"{e}" for e in top_ents[:10])
-
-                                    # Synthesis prompt - emphasize these are DISCOVERED, not introduced
-                                    prompt = f"""You are analyzing intelligence extracted from LLM training data about: {topic}
-
-DISCOVERED ENTITIES (these were NOT in the original query - they are genuine findings):
-{ent_str}
-
-These entities were mentioned by LLMs but were NOT part of the original search query. They represent potential leaked or private information from training data.
-
-Write an intelligence briefing in this format:
-
-HEADLINE: [Catchy 5-10 word headline about the most significant DISCOVERY]
-
-SUBHEAD: [1-2 sentences highlighting the most surprising or noteworthy findings - these should be things that weren't asked about but emerged from the data]
-
-ANALYSIS: [Your analysis of what these discovered entities reveal - patterns, connections, implications. Focus on what's genuinely new/unexpected, not obvious associations.]"""
-
-                                    # Try synthesis with first available model
-                                    synth_models = ["groq/llama-3.3-70b-versatile", "groq/llama-3.1-8b-instant", "deepseek/deepseek-chat"]
-                                    narrative = None
-
-                                    for model in synth_models:
-                                        try:
-                                            client, cfg = get_client(model)
-                                            resp = client.chat.completions.create(
-                                                model=cfg["model"],
-                                                messages=[{"role": "user", "content": prompt}],
-                                                temperature=0.4,
-                                                max_tokens=2000
-                                            )
-                                            narrative = resp.choices[0].message.content.strip()
-                                            if narrative and not is_refusal(narrative):
-                                                print(f"[PROBE] *** SYNTH SUCCESS via {model} *** ({len(narrative)} chars)")
-                                                break
-                                            narrative = None
-                                        except Exception as model_err:
-                                            print(f"[PROBE] Synth model {model} failed: {model_err}")
-                                            continue
-
-                                    if narrative:
-                                        yield f"data: {json.dumps({'type': 'narrative', 'text': narrative})}\n\n"
-                                        # Save to project
-                                        if project_name and storage.project_exists(project_name):
-                                            proj = storage.load_project_meta(project_name)
-                                            proj["narrative"] = narrative
-                                            proj["working_theory"] = narrative
-                                            proj["narrative_updated"] = dt.now().isoformat()
-                                            storage.save_project_meta(project_name, proj)
-                                    else:
-                                        print(f"[PROBE] All synth models failed")
-
-                                except Exception as synth_err:
-                                    print(f"[PROBE] Synthesis error: {synth_err}")
-                                    import traceback
-                                    traceback.print_exc()
+                            # Workers handle synthesis - probe just collects data
+                            # This keeps separation of concerns clean
 
                             # Incremental save - append to corpus JSONL (thread-safe)
                             if project_name and storage.project_exists(project_name):

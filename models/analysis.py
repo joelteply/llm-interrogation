@@ -20,19 +20,42 @@ class SkepticFeedback(BaseModel):
     Devil's advocate analysis.
 
     Challenges the working theory with counter-arguments.
+    Must back up critiques with its own research.
     """
     model_config = ConfigDict(extra="ignore")
 
+    confirmed_facts: list[str] = Field(default_factory=list)  # Public facts skeptic verified
     weakest_link: Optional[str] = None
+    what_i_found: Optional[str] = None  # Skeptic's own research findings
     alternative_explanation: Optional[str] = None
     circular_evidence: list[str] = Field(default_factory=list)
     counter_questions: list[str] = Field(default_factory=list)
     missing_research: Optional[str] = None
     confidence: str = "LOW"  # Flexible - can contain extra text
-    updated_at: datetime = Field(default_factory=datetime.now, alias="updated")
+    updated_at: Optional[datetime] = None  # Set explicitly when created, not on load
+
+    # What theory was being critiqued (for history context)
+    theory_snapshot: Optional[str] = None
 
     # Raw LLM response for debugging
     raw: Optional[str] = None
+
+    def summary_for_rag(self) -> str:
+        """Generate a summary for RAG context."""
+        parts = []
+        if self.confirmed_facts:
+            parts.append(f"Skeptic confirmed: {'; '.join(self.confirmed_facts[:5])}")
+        if self.what_i_found:
+            parts.append(f"Skeptic's research: {self.what_i_found[:200]}")
+        if self.weakest_link:
+            parts.append(f"Weakest link: {self.weakest_link}")
+        if self.alternative_explanation:
+            parts.append(f"Alternative: {self.alternative_explanation}")
+        if self.counter_questions:
+            parts.append(f"Questions: {'; '.join(self.counter_questions[:3])}")
+        if self.confidence:
+            parts.append(f"Confidence: {self.confidence}")
+        return " | ".join(parts) if parts else ""
 
     @property
     def confidence_level(self) -> ConfidenceLevel:

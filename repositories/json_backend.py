@@ -189,6 +189,34 @@ class JsonProjectRepository(ProjectRepository):
 
         _write_queue.write_json(path, data)
 
+    def _skeptic_history_file(self, project_id: str) -> Path:
+        return self._project_dir(project_id) / "skeptic.jsonl"
+
+    def append_skeptic_history(self, project_id: str, feedback: SkepticFeedback) -> None:
+        """Append skeptic feedback to history for dialectic context."""
+        path = self._skeptic_history_file(project_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _write_queue.append_jsonl(path, feedback.model_dump(mode="json"))
+
+    def get_skeptic_history(self, project_id: str) -> list[SkepticFeedback]:
+        """Get all skeptic feedback history - both sides see the debate."""
+        path = self._skeptic_history_file(project_id)
+        if not path.exists():
+            return []
+
+        history = []
+        with open(path) as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    history.append(SkepticFeedback.model_validate(data))
+                except (json.JSONDecodeError, Exception) as e:
+                    print(f"[WARN] Corrupt line {line_num} in {project_id}/skeptic.jsonl: {e}")
+        return history
+
 
 class JsonCorpusRepository(CorpusRepository):
     """JSON file implementation of corpus repository."""

@@ -206,11 +206,6 @@ export class ProjectView extends LitElement {
       overflow: hidden;
     }
 
-    .right-panel skeptic-panel {
-      margin-bottom: 8px;
-      flex-shrink: 0;
-    }
-
     resizable-panel {
       flex: 1;
       overflow: hidden;
@@ -681,11 +676,15 @@ export class ProjectView extends LitElement {
       this.project = await getProject(this.projectName);
 
       // Tell all workers to focus on this project
+      console.log('[PROJECT] Focusing workers on:', this.projectName);
       fetch('/api/workers/focus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project: this.projectName })
-      }).catch(() => {}); // Fire and forget
+      }).then(r => {
+        if (r.ok) console.log('[PROJECT] Workers focused successfully');
+        else console.error('[PROJECT] Focus failed:', r.status);
+      }).catch(e => console.error('[PROJECT] Focus error:', e));
 
       // Load saved state into probe state
       // Default topic from project name if not set
@@ -1285,9 +1284,6 @@ export class ProjectView extends LitElement {
 
         <!-- RIGHT: Findings + Responses -->
         <div class="right-panel">
-          <!-- Devil's Advocate feedback -->
-          <skeptic-panel .projectName=${this.projectName}></skeptic-panel>
-
           <resizable-panel .initialHeight=${280} .minHeight=${150} .maxHeight=${600}>
             <!-- TOP: Interactive word cloud -->
             <div slot="top" class="findings-top">

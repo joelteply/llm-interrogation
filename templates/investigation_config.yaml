@@ -1,0 +1,87 @@
+examples:
+- Is our vHSM code in GPT's training data?
+- Find connections between Company X and Person Y
+- What does competitor Z know about our API?
+- Case law related to Smith v. Jones 2023
+goals:
+  find_leaks:
+    label: Leak Detection
+    icon: 🔍
+    description: Probe whether LLMs have seen private content in training
+    keywords:
+    - leak
+    - training data
+    - in the model
+    - contamination
+    - our code
+    - our data
+    - private
+    - proprietary
+  competitive_intel:
+    label: Competitive Intel
+    icon: 🕵️
+    description: Discover what LLMs know about competitors or opposition
+    keywords:
+    - competitor
+    - opposition
+    - rival
+    - they know
+    - using our
+    - copied
+  find_connections:
+    label: Find Connections
+    icon: 🔗
+    description: Discover relationships between entities
+    keywords:
+    - connection
+    - between
+    - relationship
+    - linked
+    - associated
+    - related to
+  research:
+    label: Research
+    icon: 📚
+    description: General exploration of a topic
+    keywords: []
+source_hints:
+  placeholder: /path/to/repo, https://..., or paste content
+  description: Point to private code, documents, or data you want to probe for in
+    LLM training data
+content_types:
+  code:
+    extensions:
+    - .py
+    - .js
+    - .ts
+    - .tsx
+    - .java
+    - .kt
+    - .swift
+    - .go
+    - .rs
+    - .c
+    - .cpp
+    description: Source code - extracts classes, functions, constants
+  legal:
+    extensions:
+    - .pdf
+    - .doc
+    - .docx
+    patterns:
+    - v.
+    - F.3d
+    - U.S.
+    - court
+    - plaintiff
+    - defendant
+    description: Legal documents - extracts cases, citations, parties
+  research:
+    patterns:
+    - abstract
+    - methodology
+    - findings
+    - references
+    description: Research papers - extracts authors, methods, findings
+  general:
+    description: General text - extracts proper nouns, organizations, dates

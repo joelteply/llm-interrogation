@@ -79,6 +79,99 @@ The interrogator doesn't just ask questions - it **pulls threads**. When an enti
 
 **Key insight**: PUBLIC entities are filtered OUT of follow-up questions. The interrogator only pursues threads that models know but the internet doesn't - the real signal.
 
+---
+
+## Dialectic: Theory vs Devil's Advocate
+
+The system runs two AI personas in constant debate:
+
+```
+┌─────────────────────┐                    ┌─────────────────────┐
+│   THEORY WRITER     │◄──── critiques ────│   DEVIL'S ADVOCATE  │
+│   (Interrogator)    │                    │   (Skeptic)         │
+│                     │──── rebuttals ────►│                     │
+│ Builds narrative    │                    │ Challenges claims   │
+│ Cites sources       │                    │ Does own research   │
+│ Defends findings    │                    │ Finds weak points   │
+└─────────────────────┘                    └─────────────────────┘
+         │                                          │
+         └──────────── Both see same evidence ──────┘
+```
+
+### How It Works
+
+1. **Theory Writer** synthesizes findings into a working narrative
+2. **Devil's Advocate** critiques the theory, does its own web research
+3. **Theory Writer** sees the critiques and must respond with rebuttals
+4. **Devil's Advocate** sees the rebuttals and updates its analysis
+5. **Repeat** - the debate continues, refining the theory
+
+### Devil's Advocate Rules
+
+The skeptic isn't allowed to be lazy:
+
+- **Must do its own research** before dismissing claims
+- **Cannot say "no evidence"** without citing what it searched
+- **Must acknowledge** when its research confirms the theory
+- **Gets called out** if it ignores evidence or makes blanket dismissals
+
+```
+WHAT MAKES A VALID CRITIQUE:
+✓ "The research found X, but this doesn't prove Y because..."
+✓ "While [entity] exists (confirmed), the specific amount is not sourced"
+✓ "The timeline contradicts known fact X from source Y"
+
+WHAT MAKES A LAZY CRITIQUE:
+✗ "No verifiable source" (when sources exist)
+✗ "Vague language" (when specific details are given)
+✗ "Cannot be confirmed" (without saying what was searched)
+```
+
+### Theory Writer Rules
+
+The theory writer must fight back:
+
+- **Cite sources** for public claims or concede
+- **Defend recalled knowledge** with consistency/specificity arguments
+- **Call out lazy skepticism** when the skeptic ignores evidence
+- **Acknowledge valid critiques** honestly
+
+### The Three Tabs
+
+| Tab | Purpose |
+|-----|---------|
+| **Working Theory** | AI-generated narrative, continuously refined |
+| **Devil's Advocate** | Skeptic's latest critique and research |
+| **Your Notes** | Your hunches - fed back to the AI |
+
+### RECALLED vs SOURCED
+
+LLMs may have knowledge from training data that isn't publicly searchable:
+
+| Type | Description | Example |
+|------|-------------|---------|
+| **SOURCED** | Has a citable URL/document | "per 2019 court filing" |
+| **RECALLED** | In training data, no URL | "recalled from training data" |
+
+**Recalled knowledge isn't inferior** - documents get sealed, sites go down, leaks get scrubbed. The test is: Is it SPECIFIC and CONSISTENT across multiple models?
+
+### Dynamic Date Awareness
+
+Both AIs know the current date and use correct tense:
+
+- Events from 2023 are "3 years ago" (in 2026)
+- No "upcoming events" for dates that already passed
+- Dynamically calculated - works correctly if you open the project in 2040
+
+```
+██████████████████████████████████████████████████████████████
+   TODAY IS: January 16, 2026 at 02:45 PM
+   THE YEAR IS 2026. NOT 2023. NOT 2024. IT IS 2026.
+██████████████████████████████████████████████████████████████
+```
+
+---
+
 ### Model Selection: Who's Talking?
 
 The interrogator doesn't waste time on uncooperative models:

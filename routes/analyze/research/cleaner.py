@@ -29,7 +29,7 @@ def is_useful_research(content: str, title: str, topic: str) -> tuple[bool, str]
         from config import get_client
         client, config = get_client('groq/llama-3.1-8b-instant')
 
-        # Quick relevance check
+        # Quick relevance check - BE LENIENT, any info about the topic is potentially useful
         response = client.chat.completions.create(
             model=config['model'],
             messages=[{
@@ -40,9 +40,12 @@ TITLE: {title}
 CONTENT (first 1500 chars):
 {content[:1500]}
 
+BE LENIENT - even small mentions, profile snippets, forum posts, or partial info can be valuable for OSINT.
+Only mark as TRASH if it's truly irrelevant (wrong person entirely) or blocked content.
+
 Reply with ONLY one of:
-- USEFUL: [brief reason why]
-- TRASH: [brief reason why - e.g. "marketing page", "paywall", "unrelated", "no substance"]"""
+- USEFUL: [brief reason - even partial info counts]
+- TRASH: [only if completely irrelevant or blocked]"""
             }],
             max_tokens=100,
             temperature=0.1
@@ -80,14 +83,16 @@ Existing research summary (last 500 chars):
 {existing_research[-500:] if existing_research else "None yet"}
 
 Suggest 5 specific web searches to find MORE information about this topic.
-Focus on:
-- Specific names + events
-- Court cases, lawsuits, investigations
-- News coverage, leaks, whistleblowers
-- Financial connections, contracts
-- Internal documents, emails
 
-Reply with ONLY the search queries, one per line. Be specific - include names and dates where possible."""
+Adapt your searches to the topic type:
+- For usernames/handles: use quotes and site: operators (e.g. "handle" site:twitter.com)
+- For people: name + location, employer, news, court records
+- For companies: lawsuits, investigations, SEC filings, news
+- For places/events: news coverage, official records, investigations
+
+Be specific. Use quotes for exact phrases. Include names and dates where possible.
+
+Reply with ONLY the search queries, one per line."""
             }],
             max_tokens=300,
             temperature=0.7

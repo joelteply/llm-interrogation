@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 from .base import BaseEntity
-from .corpus import Question
+from .corpus import Question, Asset
 
 
 class ProjectSettings(BaseModel):
@@ -17,6 +17,33 @@ class ProjectSettings(BaseModel):
     temperature: float = 0.8
     auto_curate: bool = True
     infinite_mode: bool = False
+
+
+class SeedSource(BaseModel):
+    """Source material for investigation - path, URL, or raw content."""
+    type: str = "none"  # 'path' | 'url' | 'content' | 'none'
+    value: str = ""     # The path, URL, or raw content
+    content_type: str = "auto"  # 'auto' | 'code' | 'legal' | 'research' | 'general'
+
+
+class ProbeTarget(BaseModel):
+    """An identifier extracted from seed to probe for."""
+    identifier: str           # The thing to probe for
+    source_file: str = ""     # Where it came from
+    context: str = ""         # Surrounding context
+    probed: bool = False      # Has it been probed?
+    hit: bool = False         # Did LLMs recognize it?
+    hit_count: int = 0        # How many models recognized it
+    embedding: list[float] = Field(default_factory=list)  # Semantic embedding vector
+
+
+class SeedExplorationState(BaseModel):
+    """Tracks progress exploring seed content."""
+    explored_paths: list[str] = Field(default_factory=list)  # Already extracted from
+    probe_queue: list[ProbeTarget] = Field(default_factory=list)  # Waiting to probe
+    probed: list[ProbeTarget] = Field(default_factory=list)  # Already checked
+    hot_zones: list[str] = Field(default_factory=list)  # Areas with hits - prioritize
+    chunked_files: list[str] = Field(default_factory=list)  # Files already semantically chunked
 
 
 class Project(BaseEntity):
@@ -55,6 +82,16 @@ class Project(BaseEntity):
     # Research context (accumulated from workers)
     research_context: str = ""
     research_updated: Optional[datetime] = None
+
+    # Assets - curated evidence pointers
+    assets: list[Asset] = Field(default_factory=list)
+
+    # Seed source - private data to probe for
+    seed: SeedSource = Field(default_factory=SeedSource)
+    seed_state: SeedExplorationState = Field(default_factory=SeedExplorationState)
+
+    # Investigation goal (auto-detected or user-specified)
+    goal: str = ""  # e.g., "find_leaks", "competitive_intel", "research", "general"
 
     def hide_entity(self, entity: str) -> None:
         """Add entity to exclusion list."""

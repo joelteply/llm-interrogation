@@ -105,17 +105,9 @@ class BaseWorker(ABC):
         print(f"[{self.name}] Loop ended")
 
     def _get_project(self) -> Optional[str]:
-        """Get project to work on. Override for custom logic."""
-        if self._active_project:
-            return self._active_project
-
-        # Default: pick most recently updated
-        from routes import project_storage as storage
-        projects = storage.list_projects()
-        if projects:
-            first = projects[0]
-            return first.get("name") if isinstance(first, dict) else first
-        return None
+        """Get project to work on - reads from single source of truth."""
+        from active_project import get_active_project
+        return get_active_project()
 
     @abstractmethod
     def _do_work(self, project_name: str) -> int:

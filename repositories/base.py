@@ -80,6 +80,16 @@ class ProjectRepository(BaseRepository[Project]):
         """Save entity verification."""
         pass
 
+    @abstractmethod
+    def append_skeptic_history(self, project_id: str, feedback: SkepticFeedback) -> None:
+        """Append skeptic feedback to history (skeptic.jsonl)."""
+        pass
+
+    @abstractmethod
+    def get_skeptic_history(self, project_id: str) -> list[SkepticFeedback]:
+        """Get all skeptic feedback history for dialectic context."""
+        pass
+
 
 class CorpusRepository(BaseRepository[ProbeResponse]):
     """Repository for probe responses (corpus)."""

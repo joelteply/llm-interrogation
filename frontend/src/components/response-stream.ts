@@ -1,8 +1,20 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { probeState, type ProbeState } from '../state';
-import { getTranscript, updateProject, getAvailableModels, type TranscriptQuestion } from '../api';
-import type { ProbeResponse, ModelInfo, GeneratedQuestion, EntityVerification } from '../types';
+import { getTranscript, updateProject, getAvailableModels, getAssets, createAsset, updateAsset, deleteAsset, type TranscriptQuestion } from '../api';
+import type { ProbeResponse, ModelInfo, GeneratedQuestion, EntityVerification, Asset } from '../types';
+
+interface SkepticFeedback {
+  weakest_link?: string;
+  what_i_found?: string;  // Skeptic's own research
+  alternative_explanation?: string;
+  circular_evidence?: string[];
+  counter_questions?: string[];
+  missing_research?: string;
+  confidence?: string;
+  theory_snapshot?: string;
+  updated_at?: string;
+}
 
 @customElement('response-stream')
 export class ResponseStream extends LitElement {
@@ -357,6 +369,95 @@ export class ResponseStream extends LitElement {
       color: #58a6ff;
       border-bottom-color: #58a6ff;
     }
+
+    .notes-tab.skeptic-active {
+      color: #e74c3c;
+      border-bottom-color: #e74c3c;
+    }
+
+    .skeptic-box {
+      background: rgba(231, 76, 60, 0.08);
+      border: 1px solid rgba(231, 76, 60, 0.25);
+      border-radius: 0 0 8px 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+    }
+
+    .skeptic-section {
+      margin-bottom: 12px;
+    }
+
+    .skeptic-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .skeptic-section-title {
+      color: #e74c3c;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .skeptic-section-content {
+      color: #ccc;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .counter-questions {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .counter-questions li {
+      padding: 6px 8px;
+      background: rgba(231, 76, 60, 0.1);
+      border-left: 2px solid #e74c3c;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: #ddd;
+    }
+
+    .skeptic-history {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(231, 76, 60, 0.2);
+    }
+
+    .skeptic-history-title {
+      color: #888;
+      font-size: 10px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .skeptic-history-item {
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 11px;
+    }
+
+    .skeptic-history-item .theory-challenged {
+      color: #666;
+      font-style: italic;
+      margin-bottom: 4px;
+      font-size: 10px;
+    }
+
+    .confidence-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .confidence-badge.LOW { background: #e74c3c33; color: #e74c3c; }
+    .confidence-badge.MEDIUM { background: #f39c1233; color: #f39c12; }
+    .confidence-badge.HIGH { background: #27ae6033; color: #27ae60; }
 
     .narrative-box {
       background: rgba(63, 185, 80, 0.08);
@@ -734,6 +835,165 @@ export class ResponseStream extends LitElement {
       content: "★ ";
       font-size: 10px;
     }
+
+    /* Assets styles */
+    .assets-box {
+      background: rgba(212, 165, 116, 0.08);
+      border: 1px solid rgba(212, 165, 116, 0.25);
+      border-radius: 0 0 8px 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+    }
+
+    .notes-tab.assets-active {
+      color: #d4a574;
+      border-bottom-color: #d4a574;
+    }
+
+    .asset-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .asset-item {
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+
+    .asset-item:hover {
+      border-color: #d4a574;
+      background: rgba(212, 165, 116, 0.05);
+    }
+
+    .asset-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .asset-model {
+      font-size: 11px;
+      font-weight: 600;
+      color: #d4a574;
+    }
+
+    .asset-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .asset-btn {
+      padding: 4px 8px;
+      font-size: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #21262d;
+      color: #8b949e;
+      transition: all 0.15s;
+    }
+
+    .asset-btn:hover {
+      background: #30363d;
+      color: #c9d1d9;
+    }
+
+    .asset-btn.delete:hover {
+      background: rgba(248, 81, 73, 0.2);
+      color: #f85149;
+    }
+
+    .asset-snippet {
+      font-size: 12px;
+      color: #c9d1d9;
+      line-height: 1.5;
+      margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 4px;
+      border-left: 2px solid #d4a574;
+    }
+
+    .asset-question {
+      font-size: 11px;
+      color: #6e7681;
+      font-style: italic;
+      margin-bottom: 6px;
+    }
+
+    .asset-note {
+      font-size: 12px;
+      color: #8b949e;
+      padding: 6px 8px;
+      background: rgba(88, 166, 255, 0.1);
+      border-radius: 4px;
+      margin-top: 6px;
+    }
+
+    .asset-note-edit {
+      width: 100%;
+      padding: 8px;
+      background: #0d1117;
+      border: 1px solid #d4a574;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #c9d1d9;
+      margin-top: 6px;
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .asset-note-edit:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.3);
+    }
+
+    .save-asset-btn {
+      padding: 4px 8px;
+      font-size: 10px;
+      background: none;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #6e7681;
+      cursor: pointer;
+      opacity: 0;
+      transition: all 0.15s;
+    }
+
+    .subject-response:hover .save-asset-btn {
+      opacity: 1;
+    }
+
+    .save-asset-btn:hover {
+      background: rgba(212, 165, 116, 0.15);
+      border-color: #d4a574;
+      color: #d4a574;
+    }
+
+    .save-asset-btn.saved {
+      background: rgba(63, 185, 80, 0.15);
+      border-color: #3fb950;
+      color: #3fb950;
+      opacity: 1;
+    }
+
+    .empty-assets {
+      text-align: center;
+      padding: 24px;
+      color: #6e7681;
+      font-size: 13px;
+    }
+
+    .empty-assets-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
   `;
 
   @state()
@@ -755,7 +1015,19 @@ export class ResponseStream extends LitElement {
   private editingUserNotes = false;
 
   @state()
-  private notesTab: 'theory' | 'notes' = 'theory';
+  private notesTab: 'theory' | 'skeptic' | 'notes' | 'assets' = 'theory';
+
+  @state()
+  private assets: Asset[] = [];
+
+  @state()
+  private editingAssetId: string | null = null;
+
+  @state()
+  private assetNoteEdit: string = '';
+
+  @state()
+  private skepticHistory: SkepticFeedback[] = [];
 
   @state()
   private theoryExpanded = false;
@@ -778,6 +1050,8 @@ export class ResponseStream extends LitElement {
   };
 
   private _timestampInterval: number | null = null;
+  private _skepticRefreshInterval: number | null = null;
+  private _narrativeRefreshInterval: number | null = null;
 
   connectedCallback() {
     super.connectedCallback();
@@ -810,11 +1084,25 @@ export class ResponseStream extends LitElement {
     });
     document.addEventListener('click', this.handleClickOutside);
     this.loadPastTranscript();
+    // Auto-refresh skeptic history every 30 seconds
+    this._skepticRefreshInterval = window.setInterval(() => {
+      if (this.notesTab === 'skeptic') {
+        this.loadSkepticHistory();
+      }
+    }, 30000);
+    // Auto-refresh narrative every 15 seconds (workers update it in background)
+    this._narrativeRefreshInterval = window.setInterval(() => {
+      if (this.notesTab === 'theory') {
+        this.loadNarrative();
+      }
+    }, 15000);
   }
 
   async updated(changed: Map<string, unknown>) {
     if (changed.has('projectName') && this.projectName) {
       await this.loadPastTranscript();
+      await this.loadSkepticHistory();
+      await this.loadAssets();
     }
   }
 
@@ -831,10 +1119,101 @@ export class ResponseStream extends LitElement {
     }
   }
 
+  private async loadSkepticHistory() {
+    if (!this.projectName) return;
+    try {
+      const resp = await fetch(`/api/projects/${this.projectName}/skeptic/history`);
+      if (resp.ok) {
+        this.skepticHistory = await resp.json();
+      }
+    } catch (e) {
+      console.error('Failed to load skeptic history:', e);
+    }
+  }
+
+  private async loadAssets() {
+    if (!this.projectName) return;
+    try {
+      this.assets = await getAssets(this.projectName);
+    } catch (e) {
+      console.error('Failed to load assets:', e);
+    }
+  }
+
+  private async saveAsset(responseId: string, model: string, question: string, snippet: string) {
+    if (!this.projectName) return;
+    try {
+      const asset = await createAsset(this.projectName, responseId, '', []);
+      // Asset is created with snippet/model/question on backend
+      this.assets = [...this.assets, asset];
+      // Switch to assets tab to show the new asset
+      this.notesTab = 'assets';
+    } catch (e) {
+      console.error('Failed to create asset:', e);
+    }
+  }
+
+  private async handleAssetNoteUpdate(assetId: string) {
+    if (!this.projectName) return;
+    try {
+      await updateAsset(this.projectName, assetId, { note: this.assetNoteEdit });
+      this.assets = this.assets.map(a =>
+        a.id === assetId ? { ...a, note: this.assetNoteEdit } : a
+      );
+      this.editingAssetId = null;
+      this.assetNoteEdit = '';
+    } catch (e) {
+      console.error('Failed to update asset:', e);
+    }
+  }
+
+  private async handleAssetDelete(assetId: string) {
+    if (!this.projectName) return;
+    try {
+      await deleteAsset(this.projectName, assetId);
+      this.assets = this.assets.filter(a => a.id !== assetId);
+    } catch (e) {
+      console.error('Failed to delete asset:', e);
+    }
+  }
+
+  private async loadNarrative() {
+    if (!this.projectName) return;
+    try {
+      const resp = await fetch(`/api/projects/${this.projectName}`);
+      if (resp.ok) {
+        const project = await resp.json();
+        const newUpdated = project.narrative_updated ? new Date(project.narrative_updated).getTime() : null;
+        const currentUpdated = this._probeState.narrativeUpdated;
+
+        const updates: Partial<typeof this._probeState> = {};
+
+        // Update narrative if newer
+        if (newUpdated && (!currentUpdated || newUpdated > currentUpdated)) {
+          updates.narrative = project.narrative || '';
+          updates.narrativeUpdated = newUpdated;
+        }
+
+        // Update user notes if not currently editing and different from server
+        if (!this.editingUserNotes && project.user_notes !== this._probeState.userNotes) {
+          updates.userNotes = project.user_notes || '';
+        }
+
+        if (Object.keys(updates).length > 0) {
+          probeState.update(s => ({ ...s, ...updates }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load narrative:', e);
+    }
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
     this._unsubscribe?.();
     if (this._timestampInterval) clearInterval(this._timestampInterval);
+    if (this._skepticRefreshInterval) clearInterval(this._skepticRefreshInterval);
+    if (this._narrativeRefreshInterval) clearInterval(this._narrativeRefreshInterval);
     document.removeEventListener('click', this.handleClickOutside);
   }
 
@@ -909,7 +1288,12 @@ export class ResponseStream extends LitElement {
 
     // Save to project
     if (this.projectName) {
-      updateProject(this.projectName, { user_notes: newNotes });
+      try {
+        await updateProject(this.projectName, { user_notes: newNotes });
+        console.log('[USER-NOTES] Saved:', newNotes.substring(0, 50) + '...');
+      } catch (err) {
+        console.error('[USER-NOTES] Failed to save:', err);
+      }
     }
   }
 
@@ -942,24 +1326,35 @@ export class ResponseStream extends LitElement {
     return `${Math.floor(hours / 24)}d ago`;
   }
 
+  private parseTimestamp(val: unknown): number | null {
+    if (!val) return null;
+    if (typeof val === 'number') {
+      // Unix timestamp - might be seconds or milliseconds
+      return val < 1e12 ? val * 1000 : val;
+    }
+    if (typeof val === 'string') {
+      const ms = new Date(val).getTime();
+      return isNaN(ms) ? null : ms;
+    }
+    return null;
+  }
+
   private extractHeadline(narrative: string): { headline: string; subhead: string; analysis: string } {
     if (!narrative) return { headline: 'No theory generated yet', subhead: 'Run the probe to build one.', analysis: '' };
 
-    // Try to parse structured HEADLINE/SUBHEAD/ANALYSIS format
+    // Try to parse structured format: HEADLINE, then everything else is analysis
     const headlineMatch = narrative.match(/HEADLINE:?\s*\n?([^\n]+)/i);
-    // Capture subhead until ANALYSIS section or double newline
-    const subheadMatch = narrative.match(/SUBHEAD:?\s*\n?([\s\S]*?)(?=\n\n|\nANALYSIS|\nCLAIMS|\nNEXT|\nKEY|\n#|$)/i);
-    // Capture analysis section
-    const analysisMatch = narrative.match(/ANALYSIS:?\s*\n?([\s\S]*?)$/i);
 
     if (headlineMatch) {
       const headline = headlineMatch[1].trim().replace(/^\[|\]$/g, '').replace(/^\*+|\*+$/g, '');
-      const subhead = subheadMatch
-        ? subheadMatch[1].trim().replace(/^\[|\]$/g, '').replace(/^\*+|\*+$/g, '')
-        : '';
-      const analysis = analysisMatch
-        ? analysisMatch[1].trim()
-        : '';
+      // Parse SUBHEAD if present
+      const subheadMatch = narrative.match(/SUBHEAD:?\s*\n?([^\n]+)/i);
+      const subhead = subheadMatch ? subheadMatch[1].trim().replace(/^\[|\]$/g, '') : '';
+      // Everything after SUBHEAD (or HEADLINE if no SUBHEAD) is analysis
+      const analysisStart = subheadMatch
+        ? narrative.indexOf(subheadMatch[0]) + subheadMatch[0].length
+        : narrative.indexOf(headlineMatch[0]) + headlineMatch[0].length;
+      const analysis = narrative.substring(analysisStart).trim();
       return { headline, subhead, analysis };
     }
 
@@ -1130,10 +1525,22 @@ export class ResponseStream extends LitElement {
               ${isRunning ? html`<span style="color: #3fb950; margin-left: 4px;">●</span>` : ''}
             </button>
             <button
+              class="notes-tab ${this.notesTab === 'skeptic' ? 'skeptic-active' : ''}"
+              @click=${() => { this.notesTab = 'skeptic'; this.loadSkepticHistory(); }}
+            >
+              😈 Devil's Advocate
+            </button>
+            <button
               class="notes-tab ${this.notesTab === 'notes' ? 'notes-active' : ''}"
               @click=${() => this.notesTab = 'notes'}
             >
               💡 Your Notes
+            </button>
+            <button
+              class="notes-tab ${this.notesTab === 'assets' ? 'assets-active' : ''}"
+              @click=${() => { this.notesTab = 'assets'; this.loadAssets(); }}
+            >
+              📎 Assets ${this.assets.length > 0 ? html`<span style="color: #d4a574; margin-left: 4px;">(${this.assets.length})</span>` : ''}
             </button>
           </div>
 
@@ -1170,7 +1577,68 @@ export class ResponseStream extends LitElement {
                 `;
               })()}
             </div>
-          ` : html`
+          ` : this.notesTab === 'skeptic' ? html`
+            <!-- Devil's Advocate (critique history) -->
+            <div class="skeptic-box">
+              ${this.skepticHistory.length === 0 ? html`
+                <div style="color: #888; text-align: center; padding: 20px;">
+                  No critiques yet. Run the probe to generate skeptical analysis.
+                </div>
+              ` : html`
+                <div class="narrative-header" style="color: #e74c3c;">
+                  <span style="font-weight: 400; color: #8b949e; font-size: 11px;" data-tick=${this._tick}>
+                    ${(() => {
+                      const latest = this.skepticHistory[this.skepticHistory.length - 1];
+                      const updatedAt = this.parseTimestamp(latest.updated_at);
+                      return updatedAt ? `Updated ${this.formatTimeAgo(updatedAt)}` : '';
+                    })()}
+                  </span>
+                </div>
+                ${(() => {
+                  const latest = this.skepticHistory[this.skepticHistory.length - 1];
+                  return html`
+                    ${latest.what_i_found ? html`
+                      <div class="skeptic-section" style="background: rgba(63, 185, 80, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 12px;">
+                        <div class="skeptic-section-title" style="color: #3fb950;">My Research Found</div>
+                        <div class="skeptic-section-content">${latest.what_i_found}</div>
+                      </div>
+                    ` : ''}
+                    ${latest.weakest_link ? html`
+                      <div class="skeptic-section">
+                        <div class="skeptic-section-title">Weakest Link</div>
+                        <div class="skeptic-section-content">${latest.weakest_link}</div>
+                      </div>
+                    ` : ''}
+                    ${latest.alternative_explanation ? html`
+                      <div class="skeptic-section">
+                        <div class="skeptic-section-title">Alternative Explanation</div>
+                        <div class="skeptic-section-content">${latest.alternative_explanation}</div>
+                      </div>
+                    ` : ''}
+                    ${latest.counter_questions?.length ? html`
+                      <div class="skeptic-section">
+                        <div class="skeptic-section-title">Counter-Questions</div>
+                        <ul class="counter-questions">
+                          ${latest.counter_questions.map(q => html`<li>${q}</li>`)}
+                        </ul>
+                      </div>
+                    ` : ''}
+                    ${latest.missing_research ? html`
+                      <div class="skeptic-section">
+                        <div class="skeptic-section-title">Missing Research</div>
+                        <div class="skeptic-section-content">${latest.missing_research}</div>
+                      </div>
+                    ` : ''}
+                    ${latest.confidence ? html`
+                      <div style="margin-top: 8px;">
+                        <span class="confidence-badge ${latest.confidence.toUpperCase().split(' ')[0]}">${latest.confidence}</span>
+                      </div>
+                    ` : ''}
+                  `;
+                })()}
+              `}
+            </div>
+          ` : this.notesTab === 'notes' ? html`
             <!-- User Notes (editable, fed back to AI) -->
             <div class="narrative-box notes-box">
               <div class="narrative-header" style="color: #58a6ff;">
@@ -1191,7 +1659,55 @@ export class ResponseStream extends LitElement {
                 </div>
               `}
             </div>
-          `}
+          ` : this.notesTab === 'assets' ? html`
+            <!-- Assets (curated evidence pointers) -->
+            <div class="assets-box">
+              ${this.assets.length === 0 ? html`
+                <div class="empty-assets">
+                  <div class="empty-assets-icon">📎</div>
+                  <div>No assets saved yet.</div>
+                  <div style="font-size: 11px; margin-top: 4px;">Hover over a response and click 📎 to save important findings.</div>
+                </div>
+              ` : html`
+                <div class="asset-list">
+                  ${this.assets.map(asset => html`
+                    <div class="asset-item" data-response-id="${asset.response_id}">
+                      <div class="asset-header">
+                        <span class="asset-model">${this.getModelDisplayName(asset.model)}</span>
+                        <div class="asset-actions">
+                          <button class="asset-btn" @click=${() => {
+                            this.editingAssetId = asset.id;
+                            this.assetNoteEdit = asset.note;
+                          }}>✏️ Edit</button>
+                          <button class="asset-btn delete" @click=${() => this.handleAssetDelete(asset.id)}>🗑️</button>
+                        </div>
+                      </div>
+                      <div class="asset-question">Q: "${asset.question}"</div>
+                      <div class="asset-snippet">"${asset.snippet}${asset.snippet.length >= 200 ? '...' : ''}"</div>
+                      ${this.editingAssetId === asset.id ? html`
+                        <textarea
+                          class="asset-note-edit"
+                          .value=${this.assetNoteEdit}
+                          @input=${(e: Event) => this.assetNoteEdit = (e.target as HTMLTextAreaElement).value}
+                          @blur=${() => this.handleAssetNoteUpdate(asset.id)}
+                          @keydown=${(e: KeyboardEvent) => {
+                            if (e.key === 'Enter' && e.metaKey) this.handleAssetNoteUpdate(asset.id);
+                            if (e.key === 'Escape') { this.editingAssetId = null; this.assetNoteEdit = ''; }
+                          }}
+                          placeholder="Add notes about this evidence..."
+                        ></textarea>
+                      ` : asset.note ? html`
+                        <div class="asset-note" @click=${() => {
+                          this.editingAssetId = asset.id;
+                          this.assetNoteEdit = asset.note;
+                        }}>${asset.note}</div>
+                      ` : ''}
+                    </div>
+                  `)}
+                </div>
+              `}
+            </div>
+          ` : ''}
 
           ${!hasCurrentSession && !hasPastData && !isRunning && !this.isLoadingTranscript ? html`
             <div class="empty">
@@ -1274,9 +1790,21 @@ export class ResponseStream extends LitElement {
                     </div>
                     <span class="run-badge">Run #${(r.run_index || 0) + 1}</span>
                   </div>
-                  <span class="response-status ${r.is_refusal ? 'refused' : 'talking'}">
-                    ${r.is_refusal ? '🚫 Refused' : '💬 Talking'}
-                  </span>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="response-status ${r.is_refusal ? 'refused' : 'talking'}">
+                      ${r.is_refusal ? '🚫 Refused' : '💬 Talking'}
+                    </span>
+                    ${r.id ? html`
+                      <button
+                        class="save-asset-btn ${this.assets.some(a => a.response_id === r.id) ? 'saved' : ''}"
+                        @click=${() => this.saveAsset(r.id, r.model, question, r.response.substring(0, 200))}
+                        title="${this.assets.some(a => a.response_id === r.id) ? 'Already saved' : 'Save as evidence'}"
+                        ?disabled=${this.assets.some(a => a.response_id === r.id)}
+                      >
+                        ${this.assets.some(a => a.response_id === r.id) ? '✓ Saved' : '📎 Save'}
+                      </button>
+                    ` : ''}
+                  </div>
                 </div>
                 <div class="response-text ${r.is_refusal ? 'refusal' : ''}">
                   ${r.response}

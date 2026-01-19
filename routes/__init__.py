@@ -13,3 +13,4 @@ from . import projects
 from . import probe
 from . import generate
 from . import synthesize
+from . import config_api

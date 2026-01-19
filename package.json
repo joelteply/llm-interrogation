@@ -5,8 +5,9 @@
   "workspaces": ["frontend"],
   "scripts": {
     "setup": "python3 -m venv venv && ./venv/bin/pip install -r requirements.txt && npm install && test -f .env || cp .env.example .env",
-    "start": "npm run build && concurrently \"npm run backend\" \"npm run open\"",
-    "dev": "concurrently \"npm run backend\" \"npm run frontend:dev\" \"sleep 2 && npm run open\"",
+    "kill": "pkill -f 'python.*app.py' 2>/dev/null || true",
+    "start": "npm run kill && npm run build && concurrently \"npm run backend\" \"npm run open\"",
+    "dev": "npm run kill && concurrently \"npm run backend\" \"npm run frontend:dev\" \"sleep 2 && npm run open\"",
     "backend": "./venv/bin/python app.py",
     "frontend:dev": "npm run dev -w frontend",
     "build": "npm run build -w frontend",

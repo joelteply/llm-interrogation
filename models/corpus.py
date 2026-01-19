@@ -38,6 +38,11 @@ class Question(BaseModel):
         return self.question
 
 
+def _generate_uuid() -> str:
+    import uuid
+    return str(uuid.uuid4())
+
+
 class ProbeResponse(BaseModel):
     """
     A single response from a model.
@@ -45,6 +50,9 @@ class ProbeResponse(BaseModel):
     This is the atomic unit of the corpus.
     """
     model_config = ConfigDict(extra="ignore")  # Ignore unknown fields from legacy data
+
+    # Unique ID for referencing this response
+    id: str = Field(default_factory=_generate_uuid)
 
     # Identity
     question_index: int
@@ -74,3 +82,24 @@ class ProbeResponse(BaseModel):
     def text(self) -> str:
         """Alias for compatibility."""
         return self.response
+
+
+class Asset(BaseModel):
+    """
+    A pointer to an important response with annotation.
+
+    Assets are the curated evidence collected during an investigation.
+    They point to specific transcript responses and include user notes.
+    """
+    id: str = Field(default_factory=_generate_uuid)
+    response_id: str  # UUID of the ProbeResponse this points to
+    created: datetime = Field(default_factory=datetime.now)
+
+    # User annotation
+    note: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+    # Cached snippet for quick preview (first 200 chars of response)
+    snippet: str = ""
+    model: str = ""
+    question: str = ""

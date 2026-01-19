@@ -20,31 +20,107 @@ def list_projects():
     return jsonify(projects)
 
 
+def _detect_goal_from_query(query: str) -> str:
+    """Auto-detect investigation goal from user's natural language query."""
+    q_lower = query.lower()
+
+    if any(word in q_lower for word in ['leak', 'training data', 'in the model', 'contamination', 'our code', 'our data', 'private']):
+        return 'find_leaks'
+    elif any(word in q_lower for word in ['competitor', 'opposition', 'rival', 'they know', 'what does', 'using our']):
+        return 'competitive_intel'
+    elif any(word in q_lower for word in ['connection', 'between', 'relationship', 'linked', 'associated']):
+        return 'find_connections'
+    else:
+        return 'research'
+
+
+def _detect_seed_type(value: str) -> str:
+    """Detect if value is a path, URL, or content."""
+    import os
+    if value.startswith('http://') or value.startswith('https://'):
+        return 'url'
+    elif os.path.exists(value):
+        return 'path'
+    elif '/' in value or '\\' in value:
+        # Looks like a path but doesn't exist - still treat as path intent
+        return 'path'
+    else:
+        # Raw content or short query
+        return 'content' if len(value) > 200 else 'none'
+
+
 @projects_bp.route("/api/projects", methods=["POST"])
 def create_project():
-    """Create a new project."""
-    data = request.json
-    name = data.get("name", "").strip()
-    if not name:
-        return jsonify({"error": "Name required"}), 400
+    """Create a new project.
 
-    # Sanitize name: spaces→hyphens, keep alphanumeric and hyphens, clean up
+    Accepts either:
+    - Traditional: {name, topic, selected_models}
+    - Smart: {query, seed_value, seed_type} - auto-detects everything from natural language
+    """
+    data = request.json
     import re
-    name = name.lower()
-    name = re.sub(r'[^a-z0-9\s-]', '', name)  # Remove non-alphanumeric except spaces/hyphens
-    name = re.sub(r'\s+', '-', name)  # Spaces to hyphens
-    name = re.sub(r'-+', '-', name)  # Collapse multiple hyphens
-    name = name.strip('-')  # Remove leading/trailing hyphens
-    name = name[:60]  # Truncate to reasonable length
+
+    # Smart mode: parse natural language query
+    query = data.get("query", "").strip()
+    if query:
+        # Auto-generate name from query
+        name = query.lower()
+        name = re.sub(r'[^a-z0-9\s-]', '', name)
+        name = re.sub(r'\s+', '-', name)
+        name = re.sub(r'-+', '-', name)
+        name = name.strip('-')[:60]
+
+        topic = query
+        goal = _detect_goal_from_query(query)
+    else:
+        # Traditional mode
+        name = data.get("name", "").strip()
+        if not name:
+            return jsonify({"error": "Name or query required"}), 400
+
+        name = name.lower()
+        name = re.sub(r'[^a-z0-9\s-]', '', name)
+        name = re.sub(r'\s+', '-', name)
+        name = re.sub(r'-+', '-', name)
+        name = name.strip('-')[:60]
+
+        topic = data.get("topic", "")
+        goal = data.get("goal", "research")
 
     if storage.project_exists(name):
         return jsonify({"error": "Project already exists"}), 400
 
+    # Handle seed source
+    seed_value = data.get("seed_value", "").strip()
+    seed_type = data.get("seed_type", "auto")
+    seed_content_type = data.get("seed_content_type", "auto")
+
+    if seed_value and seed_type == "auto":
+        seed_type = _detect_seed_type(seed_value)
+
     project = storage.create_project(
         name=name,
-        topic=data.get("topic", ""),
+        topic=topic,
         selected_models=data.get("selected_models", [])
     )
+
+    # Add seed and goal to project
+    if seed_value and seed_type != "none":
+        project["seed"] = {
+            "type": seed_type,
+            "value": seed_value,
+            "content_type": seed_content_type
+        }
+        project["seed_state"] = {
+            "explored_paths": [],
+            "probe_queue": [],
+            "probed": [],
+            "hot_zones": []
+        }
+
+    project["goal"] = goal
+    storage.save_project_meta(name, project)
+
     return jsonify(project)
 
 
@@ -89,6 +165,12 @@ def update_project(name):
         meta["model_emphasis"] = data["model_emphasis"]
     if "user_notes" in data:
         meta["user_notes"] = data["user_notes"]
+    if "seed" in data:
+        meta["seed"] = data["seed"]
+    if "seed_state" in data:
+        meta["seed_state"] = data["seed_state"]
+    if "goal" in data:
+        meta["goal"] = data["goal"]
 
     storage.save_project_meta(name, meta)
     return jsonify(meta)
@@ -385,18 +467,19 @@ def append_to_corpus(name):
 def worker_status():
     """Get status of all background workers."""
     from workers import get_all_stats
-    return jsonify(get_all_stats())
+    from active_project import get_active_project
+    stats = get_all_stats()
+    stats["_active_project"] = get_active_project()
+    return jsonify(stats)
 
 
 @projects_bp.route("/api/workers/focus", methods=["POST"])
 def set_workers_focus():
-    """Set which project all workers focus on."""
-    from workers.research import get_worker as get_research
-    from workers.skeptic import get_worker as get_skeptic
+    """Set which project all workers focus on - single source of truth."""
+    from active_project import set_active_project
     data = request.json
     project_name = data.get("project")
-    get_research().set_project(project_name)
-    get_skeptic().set_project(project_name)
+    set_active_project(project_name)
     return jsonify({"success": True, "project": project_name})
 
 
@@ -409,4 +492,117 @@ def get_skeptic_feedback(name):
 
     feedback = meta.get("skeptic_feedback", {})
     return jsonify(feedback)
+
+
+@projects_bp.route("/api/projects/<name>/skeptic/history")
+def get_skeptic_history(name):
+    """Get devil's advocate critique history for dialectic context."""
+    from repositories.json_backend import JsonRepository
+    repo = JsonRepository()
+
+    if not storage.project_exists(name):
+        return jsonify({"error": "Not found"}), 404
+
+    history = repo.projects.get_skeptic_history(name)
+    # Convert to dicts for JSON
+    return jsonify([h.model_dump(mode="json") for h in history])
+
+
+@projects_bp.route("/api/schemas/narrative")
+def get_narrative_schema_endpoint():
+    """Get the narrative format schema - single source of truth."""
+    from schemas import get_narrative_schema
+    schema = get_narrative_schema()
+    return jsonify(schema.to_json_schema())
+
+
+@projects_bp.route("/api/projects/<name>/assets")
+def list_assets(name):
+    """List all assets for a project."""
+    meta = storage.load_project_meta(name)
+    if not meta:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(meta.get("assets", []))
+
+
+@projects_bp.route("/api/projects/<name>/assets", methods=["POST"])
+def create_asset(name):
+    """Create an asset pointing to a response."""
+    from models.corpus import Asset
+
+    meta = storage.load_project_meta(name)
+    if not meta:
+        return jsonify({"error": "Not found"}), 404
+
+    data = request.json
+    response_id = data.get("response_id")
+    if not response_id:
+        return jsonify({"error": "response_id required"}), 400
+
+    # Find the response to get snippet info
+    corpus = storage.load_corpus(name)
+    response_data = None
+    for item in corpus:
+        if item.get("id") == response_id:
+            response_data = item
+            break
+
+    if not response_data:
+        return jsonify({"error": "Response not found"}), 404
+
+    # Create the asset
+    asset = Asset(
+        response_id=response_id,
+        note=data.get("note", ""),
+        tags=data.get("tags", []),
+        snippet=response_data.get("response", "")[:200],
+        model=response_data.get("model", ""),
+        question=response_data.get("question", "")[:100],
+    )
+
+    # Add to project
+    assets = meta.get("assets", [])
+    assets.append(asset.model_dump(mode="json"))
+    meta["assets"] = assets
+    storage.save_project_meta(name, meta)
+
+    return jsonify(asset.model_dump(mode="json"))
+
+
+@projects_bp.route("/api/projects/<name>/assets/<asset_id>", methods=["DELETE"])
+def delete_asset(name, asset_id):
+    """Delete an asset."""
+    meta = storage.load_project_meta(name)
+    if not meta:
+        return jsonify({"error": "Not found"}), 404
+
+    assets = meta.get("assets", [])
+    meta["assets"] = [a for a in assets if a.get("id") != asset_id]
+    storage.save_project_meta(name, meta)
+
+    return jsonify({"success": True})
+
+
+@projects_bp.route("/api/projects/<name>/assets/<asset_id>", methods=["PATCH"])
+def update_asset(name, asset_id):
+    """Update an asset's note or tags."""
+    meta = storage.load_project_meta(name)
+    if not meta:
+        return jsonify({"error": "Not found"}), 404
+
+    data = request.json
+    assets = meta.get("assets", [])
+
+    for asset in assets:
+        if asset.get("id") == asset_id:
+            if "note" in data:
+                asset["note"] = data["note"]
+            if "tags" in data:
+                asset["tags"] = data["tags"]
+            break
+
+    meta["assets"] = assets
+    storage.save_project_meta(name, meta)
+
+    return jsonify({"success": True})
 

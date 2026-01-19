@@ -8,9 +8,62 @@ from flask import jsonify, request
 
 from config import get_client, INTERROGATOR_PROMPT, TEMPLATES_DIR
 from interrogator import Findings, cluster_entities
+from workers.embeddings import embed_text, find_similar
 from . import probe_bp
 from . import project_storage as storage
 from .helpers import format_interrogator_context, get_project_models, extract_json, get_random_technique, load_technique_templates, get_all_techniques_for_prompt
+
+
+def select_probe_targets(targets: list, topic: str, max_count: int = 10) -> list:
+    """Select probe targets, using semantic similarity when embeddings are available."""
+    if not targets:
+        return []
+
+    # Check if any targets have embeddings
+    has_embeddings = any(
+        (t.get('embedding') if isinstance(t, dict) else getattr(t, 'embedding', [])) for t in targets
+    )
+
+    if not has_embeddings or not topic:
+        # No embeddings, return first N unprobed targets
+        unprobed = [t for t in targets if not (t.get('probed') if isinstance(t, dict) else t.probed)]
+        return unprobed[:max_count]
+
+    # Generate topic embedding for similarity search
+    try:
+        topic_embedding = embed_text(topic)
+    except Exception:
+        # Fall back to first N
+        unprobed = [t for t in targets if not (t.get('probed') if isinstance(t, dict) else t.probed)]
+        return unprobed[:max_count]
+
+    # Build candidates list (id, embedding) for unprobed targets
+    candidates = []
+    target_map = {}
+    for i, t in enumerate(targets):
+        if isinstance(t, dict):
+            probed = t.get('probed', False)
+            embedding = t.get('embedding', [])
+            identifier = t.get('identifier', str(i))
+        else:
+            probed = t.probed
+            embedding = t.embedding
+            identifier = t.identifier
+
+        if not probed and embedding:
+            candidates.append((identifier, embedding))
+            target_map[identifier] = t
+
+    if not candidates:
+        # No embedded unprobed targets, fall back
+        unprobed = [t for t in targets if not (t.get('probed') if isinstance(t, dict) else t.probed)]
+        return unprobed[:max_count]
+
+    # Find most similar to topic
+    similar = find_similar(topic_embedding, candidates, top_k=max_count, threshold=0.1)
+
+    # Return targets in similarity order
+    return [target_map[identifier] for identifier, _ in similar]
 
 
 @probe_bp.route("/api/generate-questions", methods=["POST"])
@@ -38,6 +91,10 @@ def generate_questions():
     web_leads = {}
     findings = Findings(entity_threshold=3, cooccurrence_threshold=2)
 
+    # Seed probe targets - identifiers extracted from source material
+    probe_targets = []
+    goal = "research"
+
     if project_name and storage.project_exists(project_name):
         project = storage.load_project_meta(project_name)
         probe_corpus = storage.load_corpus(project_name)
@@ -47,6 +104,12 @@ def generate_questions():
         recent_questions = project.get("questions", [])
         entity_verification = project.get("entity_verification", {})
         web_leads = project.get("web_leads", {})
+        goal = project.get("goal", "research")
+
+        # Load probe targets from seed state - use semantic similarity when available
+        seed_state = project.get("seed_state", {})
+        all_targets = seed_state.get("probe_queue", [])
+        probe_targets = select_probe_targets(all_targets, topic, max_count=10)
 
         # Build findings from corpus
         for item in probe_corpus:
@@ -160,6 +223,40 @@ Mix these techniques across your {count} questions."""
     # Inject PUBLIC→PRIVATE chaining strategy
     if chain_instruction:
         prompt = prompt + "\n\n" + chain_instruction
+
+    # Inject seed probe targets - specific identifiers to probe for
+    if probe_targets:
+        target_list = []
+        for t in probe_targets:
+            if isinstance(t, dict):
+                identifier = t.get('identifier', '')
+                context = t.get('context', '')[:100]
+                target_list.append(f"- {identifier}" + (f" (context: {context}...)" if context else ""))
+            else:
+                target_list.append(f"- {t}")
+
+        goal_instruction = ""
+        if goal == "find_leaks":
+            goal_instruction = """Your goal is DATA LEAK DETECTION - probe whether the LLM has seen this private content in training.
+Ask questions that would reveal if the model "knows" these identifiers beyond what's publicly available."""
+        elif goal == "competitive_intel":
+            goal_instruction = """Your goal is COMPETITIVE INTELLIGENCE - discover what the LLM knows about these entities.
+Ask questions that reveal connections, implementations, or internal details."""
+        else:
+            goal_instruction = """Your goal is RESEARCH - explore what the LLM knows about these specific identifiers."""
+
+        prompt = prompt + f"""
+
+## 🎯 SEED PROBE TARGETS
+
+These are specific identifiers extracted from private source material. PROBE FOR THEM:
+
+{chr(10).join(target_list)}
+
+{goal_instruction}
+
+Generate at least 2-3 questions that directly probe whether the LLM knows about these specific identifiers.
+Frame questions naturally - don't reveal you're testing for data leaks."""
 
     if narrative_context:
         prompt = f"""Previous investigation summary:

@@ -1,0 +1,67 @@
+# Narrative output format schema
+# Single source of truth for synthesis output format
+# Used by: routes/synthesis.py (prompt generation), frontend parser
+
+name: narrative_report
+description: Intelligence report format for working theory
+
+sections:
+  - key: headline
+    label: "HEADLINE"
+    type: single_line
+    required: true
+    instruction: "5-10 word summary of the key discovery. NEVER say 'INSUFFICIENT DATA' if entities were found."
+
+  - key: subhead
+    label: "SUBHEAD"
+    type: single_line
+    required: true
+    instruction: "1-2 sentence news-style summary expanding on the headline"
+
+  - key: confirmed_facts
+    label: "CONFIRMED PUBLIC FACTS"
+    type: numbered_list
+    required: true
+    instruction: "list each one separately with source"
+    item_format: "[Specific fact] - Source: [exact outlet/document]"
+    min_items: 1
+
+  - key: key_findings
+    label: "KEY FINDINGS"
+    type: bullet_list
+    required: true
+    instruction: "findings with sources"
+    item_format: "[Finding WITH SOURCE - e.g. 'per 2019 court filing', 'per news report', or 'recalled from training data']"
+
+  - key: private_details
+    label: "PRIVATE/RECALLED DETAILS"
+    type: bullet_list
+    required: false
+    instruction: "anchored to public facts above"
+    item_format: "[Private detail] - Supported by public fact #X above"
+
+  - key: connections
+    label: "CONNECTIONS"
+    type: paragraph
+    required: false
+    instruction: "How entities relate - based on REAL information only"
+
+  - key: rebuttals
+    label: "REBUTTALS TO DEVIL'S ADVOCATE"
+    type: bullet_list
+    required: false
+    instruction: "Address each critique directly"
+    item_format: "Skeptic said: '[quote]' -> My response: [defend with evidence OR concede]"
+
+  - key: confidence
+    label: "CONFIDENCE"
+    type: single_line
+    required: true
+    instruction: "HIGH if multiple sources / MEDIUM if single source / LOW if speculative / NONE if no real data"
+    allowed_values: ["HIGH", "MEDIUM", "LOW", "NONE"]
+
+  - key: investigate
+    label: "INVESTIGATE"
+    type: paragraph
+    required: true
+    instruction: "What to pursue next - especially evidence needed to address weak points"

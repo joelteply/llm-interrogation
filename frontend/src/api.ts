@@ -1,4 +1,4 @@
-import type { Project, ProbeConfig, Findings, SSEEvent, ModelInfo, TechniqueListItem, TechniqueTemplate } from './types';
+import type { Project, ProbeConfig, Findings, SSEEvent, ModelInfo, TechniqueListItem, TechniqueTemplate, Asset } from './types';
 
 const API_BASE = '/api';
 
@@ -334,4 +334,74 @@ export async function saveTechnique(id: string, template: TechniqueTemplate): Pr
 
 export function clearTechniquesCache() {
   _techniquesCache = null;
+}
+
+// Assets - curated evidence pointers
+export async function getAssets(projectName: string): Promise<Asset[]> {
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/assets`);
+  if (!res.ok) throw new Error('Failed to fetch assets');
+  return res.json();
+}
+
+export async function createAsset(projectName: string, responseId: string, note?: string, tags?: string[]): Promise<Asset> {
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/assets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ response_id: responseId, note: note || '', tags: tags || [] }),
+  });
+  if (!res.ok) throw new Error('Failed to create asset');
+  return res.json();
+}
+
+export async function updateAsset(projectName: string, assetId: string, updates: { note?: string; tags?: string[] }): Promise<void> {
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/assets/${assetId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error('Failed to update asset');
+}
+
+export async function deleteAsset(projectName: string, assetId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/assets/${assetId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete asset');
+}
+
+// Investigation Config
+export interface InvestigationConfig {
+  examples?: string[];
+  goals?: Record<string, {
+    label: string;
+    icon: string;
+    description: string;
+    keywords: string[];
+  }>;
+  source_hints?: {
+    placeholder: string;
+    description: string;
+  };
+  content_types?: Record<string, {
+    extensions?: string[];
+    patterns?: string[];
+    description: string;
+  }>;
+}
+
+export async function getInvestigationConfig(): Promise<InvestigationConfig> {
+  const res = await fetch(`${API_BASE}/config/investigation`);
+  if (!res.ok) throw new Error('Failed to fetch investigation config');
+  return res.json();
+}
+
+export async function updateInvestigationConfig(config: Partial<InvestigationConfig>): Promise<InvestigationConfig> {
+  const res = await fetch(`${API_BASE}/config/investigation`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error('Failed to update investigation config');
+  const data = await res.json();
+  return data.config;
 }

@@ -209,6 +209,51 @@ class RepositoryContractTests(ABC):
         assert "John Doe" in loaded.public_entities
         assert "Mystery Person" in loaded.private_entities
 
+    # === Skeptic History (Dialectic) ===
+
+    def test_skeptic_history_empty(self, repo):
+        repo.projects.save(Project(name="test"))
+        history = repo.projects.get_skeptic_history("test")
+        assert history == []
+
+    def test_skeptic_history_append_and_load(self, repo):
+        repo.projects.save(Project(name="test"))
+
+        feedback1 = SkepticFeedback(
+            weakest_link="Evidence is circumstantial",
+            theory_snapshot="Theory v1: X did Y",
+            confidence="LOW"
+        )
+        repo.projects.append_skeptic_history("test", feedback1)
+
+        feedback2 = SkepticFeedback(
+            weakest_link="Still no direct proof",
+            counter_questions=["Where's the money trail?"],
+            theory_snapshot="Theory v2: X did Y because Z",
+            confidence="MEDIUM"
+        )
+        repo.projects.append_skeptic_history("test", feedback2)
+
+        history = repo.projects.get_skeptic_history("test")
+
+        assert len(history) == 2
+        assert history[0].weakest_link == "Evidence is circumstantial"
+        assert history[1].weakest_link == "Still no direct proof"
+        assert history[1].counter_questions == ["Where's the money trail?"]
+
+    def test_skeptic_history_preserves_theory_snapshot(self, repo):
+        """Both sides see what theory was being challenged."""
+        repo.projects.save(Project(name="test"))
+
+        feedback = SkepticFeedback(
+            weakest_link="Weak",
+            theory_snapshot="The current working theory is..."
+        )
+        repo.projects.append_skeptic_history("test", feedback)
+
+        history = repo.projects.get_skeptic_history("test")
+        assert history[0].theory_snapshot == "The current working theory is..."
+
 
 class TestJsonBackendContract(RepositoryContractTests):
     """Test JSON backend passes contract."""

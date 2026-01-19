@@ -50,6 +50,7 @@ export type TechniqueType = string;
 
 // Response from a single model run
 export interface ProbeResponse {
+  id?: string;                       // UUID for referencing
   question_index: number;
   question: string;
   model: string;
@@ -59,6 +60,18 @@ export interface ProbeResponse {
   discovered_entities?: string[];    // Genuine findings NOT in user query
   introduced_entities?: string[];    // Entities echoed from user query (less valuable)
   is_refusal?: boolean;
+}
+
+// Asset - pointer to important response with annotation
+export interface Asset {
+  id: string;
+  response_id: string;               // UUID of the ProbeResponse
+  created: string;                   // ISO timestamp
+  note: string;
+  tags: string[];
+  snippet: string;                   // First 200 chars of response
+  model: string;
+  question: string;
 }
 
 // Scored entity with frequency and score

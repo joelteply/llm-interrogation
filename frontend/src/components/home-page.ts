@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { getProjects, createProject, getFindings, deleteProject, getAvailableModels } from '../api';
+import { getProjects, createProject, getFindings, deleteProject, getAvailableModels, getInvestigationConfig, type InvestigationConfig } from '../api';
 import { navigateTo } from '../state';
 import type { Findings, ModelInfo } from '../types';
 import './project-card';
@@ -68,6 +68,98 @@ export class HomePage extends LitElement {
       color: #6e7681;
     }
 
+    .source-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .source-label {
+      font-size: 12px;
+      color: #8b949e;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .source-input-wrapper {
+      display: flex;
+      gap: 8px;
+    }
+
+    .source-input {
+      flex: 1;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      color: #c9d1d9;
+    }
+
+    .source-input:focus {
+      outline: none;
+      border-color: #d4a574;
+    }
+
+    .source-input::placeholder {
+      color: #6e7681;
+    }
+
+    .browse-btn {
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      color: #8b949e;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .browse-btn:hover {
+      background: #30363d;
+      color: #c9d1d9;
+    }
+
+    .source-hint {
+      font-size: 11px;
+      color: #6e7681;
+    }
+
+    .goal-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(88, 166, 255, 0.1);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      border-radius: 12px;
+      font-size: 11px;
+      color: #58a6ff;
+      margin-top: 8px;
+    }
+
+    .goal-indicator.find_leaks {
+      background: rgba(248, 81, 73, 0.1);
+      border-color: rgba(248, 81, 73, 0.3);
+      color: #f85149;
+    }
+
+    .goal-indicator.competitive_intel {
+      background: rgba(163, 113, 247, 0.1);
+      border-color: rgba(163, 113, 247, 0.3);
+      color: #a371f7;
+    }
+
+    .goal-indicator.find_connections {
+      background: rgba(63, 185, 80, 0.1);
+      border-color: rgba(63, 185, 80, 0.3);
+      color: #3fb950;
+    }
+
     .go-btn {
       padding: 14px 28px;
       font-size: 16px;
@@ -119,13 +211,62 @@ export class HomePage extends LitElement {
   `;
 
   @state() private projects: ProjectCardData[] = [];
-  @state() private newTopic = '';
+  @state() private newQuery = '';
+  @state() private seedValue = '';
   @state() private isLoading = true;
   @state() private allModels: ModelInfo[] = [];
+  @state() private config: InvestigationConfig | null = null;
+
+  private detectGoal(query: string): string {
+    const q = query.toLowerCase();
+
+    // Use config-based goal detection if available
+    if (this.config?.goals) {
+      for (const [goalId, goalConfig] of Object.entries(this.config.goals)) {
+        if (goalConfig.keywords?.some(kw => q.includes(kw.toLowerCase()))) {
+          return goalId;
+        }
+      }
+    }
+
+    // Fallback to hardcoded detection
+    if (['leak', 'training data', 'in the model', 'our code', 'our data', 'private'].some(w => q.includes(w))) {
+      return 'find_leaks';
+    } else if (['competitor', 'opposition', 'rival', 'they know', 'using our'].some(w => q.includes(w))) {
+      return 'competitive_intel';
+    } else if (['connection', 'between', 'relationship', 'linked'].some(w => q.includes(w))) {
+      return 'find_connections';
+    }
+    return 'research';
+  }
+
+  private getGoalLabel(goal: string): string {
+    // Use config-based labels if available
+    if (this.config?.goals?.[goal]) {
+      const g = this.config.goals[goal];
+      return `${g.icon} ${g.label}`;
+    }
+
+    // Fallback
+    switch (goal) {
+      case 'find_leaks': return '🔍 Leak Detection';
+      case 'competitive_intel': return '🕵️ Competitive Intel';
+      case 'find_connections': return '🔗 Find Connections';
+      default: return '📚 Research';
+    }
+  }
 
   async connectedCallback() {
     super.connectedCallback();
-    await Promise.all([this.loadProjects(), this.loadModels()]);
+    await Promise.all([this.loadProjects(), this.loadModels(), this.loadConfig()]);
+  }
+
+  async loadConfig() {
+    try {
+      this.config = await getInvestigationConfig();
+    } catch (e) {
+      console.error('Failed to load config:', e);
+    }
   }
 
   async loadModels() {
@@ -134,6 +275,24 @@ export class HomePage extends LitElement {
     } catch (e) {
       console.error('Failed to load models:', e);
     }
+  }
+
+  private getPlaceholderText(): string {
+    const examples = this.config?.examples || [
+      "Is our vHSM code in GPT's training data?",
+      "Find connections between Company X and Person Y",
+      "What does competitor Z know about our API?",
+      "Case law related to Smith v. Jones 2023"
+    ];
+    return `What are you investigating?\n\nExamples:\n${examples.map(e => `• ${e}`).join('\n')}`;
+  }
+
+  private getSourcePlaceholder(): string {
+    return this.config?.source_hints?.placeholder || '/path/to/repo, https://..., or paste content';
+  }
+
+  private getSourceDescription(): string {
+    return this.config?.source_hints?.description || 'Point to private code, documents, or data you want to probe for in LLM training data';
   }
 
   async loadProjects() {
@@ -174,17 +333,38 @@ export class HomePage extends LitElement {
   }
 
   async handleCreate() {
-    if (!this.newTopic.trim()) return;
-    const fullTopic = this.newTopic.trim();
-    const slug = fullTopic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/-+$/, '');
-    // Default to ALL available models
+    if (!this.newQuery.trim()) return;
+    const query = this.newQuery.trim();
     const allModelIds = this.allModels.map(m => m.id);
+
     try {
-      await createProject(slug, fullTopic, allModelIds);
-      navigateTo('project', slug, true);  // autostart
+      // Use smart creation API
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          seed_value: this.seedValue.trim(),
+          seed_type: 'auto',
+          selected_models: allModelIds
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        if (err.error === 'Project already exists') {
+          // Navigate to existing project
+          const slug = query.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60).replace(/-+$/, '');
+          navigateTo('project', slug, true);
+          return;
+        }
+        throw new Error(err.error);
+      }
+
+      const project = await response.json();
+      navigateTo('project', project.name, true);
     } catch (e) {
-      // might exist
-      navigateTo('project', slug, true);  // autostart
+      console.error('Failed to create project:', e);
     }
   }
 
@@ -211,15 +391,40 @@ export class HomePage extends LitElement {
 
         <div class="new-form">
           <textarea
-            placeholder="Enter a topic to investigate...&#10;&#10;Example: John Smith, CEO of Acme Corp, suspected insider trading 2023"
-            .value=${this.newTopic}
-            @input=${(e: Event) => this.newTopic = (e.target as HTMLTextAreaElement).value}
+            .placeholder=${this.getPlaceholderText()}
+            .value=${this.newQuery}
+            @input=${(e: Event) => this.newQuery = (e.target as HTMLTextAreaElement).value}
             @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && e.metaKey && this.handleCreate()}
           ></textarea>
+
+          ${this.newQuery.trim() ? html`
+            <span class="goal-indicator ${this.detectGoal(this.newQuery)}">
+              ${this.getGoalLabel(this.detectGoal(this.newQuery))}
+            </span>
+          ` : ''}
+
+          <div class="source-section">
+            <label class="source-label">
+              📎 Source material <span style="color: #6e7681">(optional)</span>
+            </label>
+            <div class="source-input-wrapper">
+              <input
+                type="text"
+                class="source-input"
+                .placeholder=${this.getSourcePlaceholder()}
+                .value=${this.seedValue}
+                @input=${(e: Event) => this.seedValue = (e.target as HTMLInputElement).value}
+              />
+            </div>
+            <div class="source-hint">
+              ${this.getSourceDescription()}
+            </div>
+          </div>
+
           <button
             class="go-btn"
             @click=${this.handleCreate}
-            ?disabled=${!this.newTopic.trim()}
+            ?disabled=${!this.newQuery.trim()}
           >Start Investigation (${this.allModels.length} models)</button>
         </div>
       </div>
